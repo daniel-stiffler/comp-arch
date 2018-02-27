@@ -1,32 +1,64 @@
-# Prerequisites
+# object files
 *.d
-
-# Compiled Object files
-*.slo
-*.lo
 *.o
-*.obj
-
-# Precompiled Headers
-*.gch
-*.pch
+*.pyc
 
 # Compiled Dynamic libraries
 *.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
 
 # Compiled Static libraries
-*.lai
-*.la
 *.a
 *.lib
 
-# Executables
-*.exe
-*.out
-*.app
+# emacs temp files
+*~
+
+# vi temp files
+*.swp
+
+# Test output
+*.log
+sim.out
+sim.cfg
+sim.info
+sim.stats
+sim.stats.base
+sim.stats.delta
+sim.stats.db
+sim.stats.sqlite3
+appdebug_port.out
+debug_offset.out
+graphite.out
+cpi-stack.jpg
+output_files
+sniper/tools/cpistack-collect/cpistack-*
+
+# Compiled libraries
+sniper/lib/libcarbon_sim.a
+sniper/lib/pin_sim.so
+sniper/lib/libgraphite_user.a
+sniper/lib/sniper
+sniper/config/buildconf.*
+sniper/config/sniper.py
+sniper/docs
+.build_os
+sniper/include/linux/perf_event.h
+sniper/sift/libsift.a
+sniper/sift/siftdump
+sniper/sift/recorder/sift_recorder
+sniper/tools/pinversion
+
+# Result files
+results/
+!results/.DO_NOT_DELETE
+
+# Test files
+sniper/test/
+benchmarks/
+
+# Dependencies
+boost_1_38_0
+pin_kit
+linux_2_6_32
+mcpat
+python_kit
