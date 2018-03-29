@@ -51,38 +51,25 @@ flags = [
 # use when compiling headers. So it will guess. Badly. So C++ headers will be
 # compiled as C headers. You don't want that so ALWAYS specify the '-x' flag.
 # For a C project, you would set this to 'c' instead of 'c++'.
-'-x',
-'c++',
-'-isystem',
-'../BoostParts',
-'-isystem',
-get_python_inc(),
-'-isystem',
-'../llvm/include',
-'-isystem',
-'../llvm/tools/clang/include',
-'-I',
-'.',
-'-I',
-'./ClangCompleter',
-'-isystem',
-'./tests/gmock/gtest',
-'-isystem',
-'./tests/gmock/gtest/include',
-'-isystem',
-'./tests/gmock',
-'-isystem',
-'./tests/gmock/include',
-'-isystem',
-'./benchmarks/benchmark/include',
+'-std=c++11',
+'-x', 'c++',
+'-isystem', '../BoostParts',
+'-isystem', get_python_inc(),
+'-isystem', '../llvm/include',
+'-isystem', '../llvm/tools/clang/include',
+'-I', '.',
+'-I', 'misc',
+'-I', 'core/memory_subsystem',
+'-I', 'core/memory_subsystem/cache',
+'-I', 'core/memory_subsystem/compressed',
+'-I', 'core/memory_subsystem/parametric_dram_directory_msi',
+'-I', '../common/system',
+'-isystem', './tests/gmock/gtest',
+'-isystem', './tests/gmock/gtest/include',
+'-isystem', './tests/gmock',
+'-isystem', './tests/gmock/include',
+'-isystem', './benchmarks/benchmark/include',
 ]
-
-# Clang automatically sets the '-std=' flag to 'c++14' for MSVC 2015 or later,
-# which is required for compiling the standard library, and to 'c++11' for older
-# versions.
-if platform.system() != 'Windows':
-  flags.append( '-std=c++11' )
-
 
 # Set this to the absolute path to the folder (NOT the file!) containing the
 # compile_commands.json file to use that instead of 'flags'. See here for
