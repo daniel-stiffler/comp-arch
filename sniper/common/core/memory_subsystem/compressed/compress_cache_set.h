@@ -5,11 +5,11 @@
 #include <memory>
 #include <vector>
 
-#include "compress_block_data.h"
 #include "cache_base.h"
 #include "cache_block_info.h"
 #include "cache_set.h"
-#include "fixed_types.h"
+#include "compress_block_data.h"
+#include "dish_utils.h"
 #include "superblock_info.h"
 
 class CompressCacheSet : public CacheSet {

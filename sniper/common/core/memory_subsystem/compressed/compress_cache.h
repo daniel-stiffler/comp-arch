@@ -5,9 +5,11 @@
 #include <vector>
 
 #include "cache.h"
-#include "fixed_types.h"
+#include "compress_cache_set.h"
+#include "dish_utils.h"
 #include "log.h"
 #include "simulator.h"
+#include "superblock_info.h"
 
 class CompressCache : public Cache {
   /*
