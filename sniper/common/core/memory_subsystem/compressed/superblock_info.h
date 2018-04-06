@@ -3,26 +3,23 @@
 
 #include <array>
 #include <cassert>
-#include <memory>
 
 #include "cache_block_info.h"
-#include "fixed_types.h"
+#include "dish_utils.h"
 
-constexpr MAX_SUPERBLOCK_SIZE = 4;
-constexpr IntPtr TAG_NOTUSED  = static_cast<IntPtr>(~0);
+using DISH::CacheBlockInfoUPtr;
 
 class SuperBlockInfo {
  private:
-  std::array<std::unique_ptr<CacheBlockInfo>, MAX_SUPERBLOCK_SIZE>
-      m_block_infos;
+  std::array<CacheBlockInfoUPtr, DISH::SUPERBLOCK_SIZE> m_block_infos;
   bool m_valid[4];
   IntPtr m_super_tag;
 
  public:
-  SuperBlockInfo(IntPtr super_tag = TAG_NOTUSED);
+  SuperBlockInfo(IntPtr super_tag = DISH::TAG_UNUSED);
 
   CacheBlockInfo* getBlockInfo(UInt32 block_id) const {
-    assert(block_id < MAX_SUPERBLOCK_SIZE);
+    assert(block_id < DISH::SUPERBLOCK_SIZE);
 
     if (m_valid[block_id])
       return m_block_infos[block_id].get();
@@ -34,27 +31,25 @@ class SuperBlockInfo {
                           UInt32* block_id) const;
 
   bool isValid() const {
-    for (UInt32 i = 0; i < MAX_SUPERBLOCK_SIZE; ++i) {
+    for (UInt32 i = 0; i < DISH::SUPERBLOCK_SIZE; ++i) {
       if (m_valid[i]) return true;
     }
 
     return false;
   }
   bool isValid(UInt32 block_id) const {
-    assert(block_id < MAX_SUPERBLOCK_SIZE);
+    assert(block_id < SUPERBLOCK_SIZE);
 
     return m_valid[block_id];
   }
 
-  void swapBlockInfo(UInt32 block_id,
-                     std::unique_ptr<CacheBlockInfo>& inout_block_info);
-  std::unique_ptr<CacheBlockInfo> evictBlockInfo(UInt32 block_id);
-  void insertBlockInfo(UInt32 block_id,
-                       std::unique_ptr<CacheBlockInfo> ins_block_info);
+  void swapBlockInfo(UInt32 block_id, CacheBlockInfoUPtr& inout_block_info);
+  CacheBlockInfoUPtr evictBlockInfo(UInt32 block_id);
+  void insertBlockInfo(UInt32 block_id, CacheBlockInfoUPtr ins_block_info);
 
   bool compareTags(UInt32 tag, UInt32* block_id = nullptr) const;
 
   bool invalidate(UInt32 tag);
-}
+};
 
 #endif /* __SUPERBLOCK_INFO_H__ */
