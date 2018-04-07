@@ -56,6 +56,7 @@ class Cache : public CacheBase {
   CacheBlockInfo* accessSingleLine(IntPtr addr, access_t access_type,
                                    Byte* acc_data, UInt32 bytes,
                                    SubsecondTime now, bool update_replacement,
+                                   std::vector<IntPtr>* writeback_addrs,
                                    WritebackLines* writebacks,
                                    CacheCntlr* cntlr = nullptr);
   void insertSingleLine(IntPtr addr, Byte* ins_data, SubsecondTime now,

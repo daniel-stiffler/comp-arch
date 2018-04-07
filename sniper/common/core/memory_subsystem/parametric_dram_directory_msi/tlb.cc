@@ -22,7 +22,9 @@ TLB::TLB(String name, String cfgname, core_id_t core_id, UInt32 num_entries, UIn
 bool
 TLB::lookup(IntPtr address, SubsecondTime now, bool allocate_on_miss)
 {
-   bool hit = m_cache.accessSingleLine(address, Cache::LOAD, NULL, 0, now, true, NULL);
+   WritebackLines evictions;
+   std::vector<IntPtr> eviction_addrs;
+   bool hit = m_cache.accessSingleLine(address, Cache::LOAD, NULL, 0, now, true, &eviction_addrs, &evictions);
 
    m_access++;
 
@@ -40,6 +42,16 @@ TLB::lookup(IntPtr address, SubsecondTime now, bool allocate_on_miss)
    {
       allocate(address, now);
    }
+  
+   // Use next level as a victim cache
+   if (!eviction_addrs.empty() && m_next_level)
+   {
+      for(auto& eviction_addr : eviction_addrs)
+      {
+         m_next_level->allocate(eviction_addr, now);
+      }
+   }
+
 
    return hit;
 }
@@ -53,8 +65,12 @@ TLB::allocate(IntPtr address, SubsecondTime now)
 
    // Use next level as a victim cache
    if (!eviction_addrs.empty() && m_next_level)
+   {
       for(auto& eviction_addr : eviction_addrs)
-      m_next_level->allocate(eviction_addr, now);
+      {
+         m_next_level->allocate(eviction_addr, now);
+      }
+   }
 }
 
 }
