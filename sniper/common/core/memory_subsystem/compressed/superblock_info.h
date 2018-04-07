@@ -38,7 +38,7 @@ class SuperBlockInfo {
     return false;
   }
   bool isValid(UInt32 block_id) const {
-    assert(block_id < SUPERBLOCK_SIZE);
+    assert(block_id < DISH::SUPERBLOCK_SIZE);
 
     return m_valid[block_id];
   }
