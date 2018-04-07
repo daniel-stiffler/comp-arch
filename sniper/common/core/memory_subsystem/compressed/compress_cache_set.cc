@@ -5,7 +5,7 @@
 #include "compress_cache_set_lru.h"
 #include "config.h"
 #include "config.hpp"
-#include "fixed_sizes.h"
+#include "fixed_types.h"
 #include "log.h"
 #include "simulator.h"
 
