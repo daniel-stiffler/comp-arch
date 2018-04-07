@@ -325,7 +325,7 @@ void CompressBlockData::compressScheme1(UInt32 block_id, UInt32 offset,
                        DISH::GRANULARITY_BYTES;
 
     for (UInt32 i = start_chunk; i < end_chunk; ++i) {
-      m_block_compressed[i] = insertDictEntry(wr_data_chunks[i]);
+      m_data[block_id][i] = insertDictEntry(wr_data_chunks[i]);
     }
   } else if (m_scheme == DISH::scheme::UNCOMPRESSED) {
     // Find the uncompressed block_id.  Guaranteed to be valid due to
