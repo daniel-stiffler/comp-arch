@@ -1,186 +1,167 @@
-#include "simulator.h"
+#include <utility>
+
 #include "cache.h"
 #include "log.h"
+#include "simulator.h"
 
 // Cache class
 // constructors/destructors
-Cache::Cache(
-   String name,
-   String cfgname,
-   core_id_t core_id,
-   UInt32 num_sets,
-   UInt32 associativity,
-   UInt32 cache_block_size,
-   String replacement_policy,
-   cache_t cache_type,
-   hash_t hash,
-   FaultInjector *fault_injector,
-   AddressHomeLookup *ahl)
-:
-   CacheBase(name, num_sets, associativity, cache_block_size, hash, ahl),
-   m_enabled(false),
-   m_num_accesses(0),
-   m_num_hits(0),
-   m_cache_type(cache_type),
-   m_fault_injector(fault_injector)
-{
-   m_set_info = CacheSet::createCacheSetInfo(name, cfgname, core_id, replacement_policy, m_associativity);
-   m_sets = new CacheSet*[m_num_sets];
-   for (UInt32 i = 0; i < m_num_sets; i++)
-   {
-      m_sets[i] = CacheSet::createCacheSet(cfgname, core_id, replacement_policy, m_cache_type, m_associativity, m_blocksize, m_set_info);
-   }
+Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
+             UInt32 associativity, UInt32 cache_block_size, bool compressible,
+             String replacement_policy, cache_t cache_type, hash_t hash,
+             FaultInjector* fault_injector, AddressHomeLookup* ahl)
+    : CacheBase(name, num_sets, associativity, cache_block_size, hash, ahl),
+      m_enabled(false),
+      m_compressible(compressible),
+      m_num_accesses(0),
+      m_num_hits(0),
+      m_cache_type(cache_type),
+      m_fault_injector(fault_injector) {
 
-   #ifdef ENABLE_SET_USAGE_HIST
-   m_set_usage_hist = new UInt64[m_num_sets];
-   for (UInt32 i = 0; i < m_num_sets; i++)
-      m_set_usage_hist[i] = 0;
-   #endif
+  m_set_info = std::move(
+      CacheSet::createCacheSetInfo(name, cfgname, core_id, replacement_policy,
+                                   m_associativity, m_compressible));
+
+  // Populate m_sets with newly-constructed objects
+  for (UInt32 i = 0; i < m_num_sets; i++) {
+    // CacheSet::createCacheSet is a factory function for CacheSet objects, so
+    // use move semantics to push the unique pointers into the vector
+    m_sets.push_back(std::move(CacheSet::createCacheSet(
+        cfgname, core_id, replacement_policy, m_cache_type, m_associativity,
+        m_blocksize, m_compressible, m_set_info.get())));
+  }
+
+#ifdef ENABLE_SET_USAGE_HIST
+  // Reserve and construct memory to hold the elements
+  m_set_usage_hist.resize(m_num_sets);
+  for (auto& e : m_set_usage_hist) e = 0;  // Zero out the memory counters
+#endif
 }
 
-Cache::~Cache()
-{
-   #ifdef ENABLE_SET_USAGE_HIST
-   printf("Cache %s set usage:", m_name.c_str());
-   for (SInt32 i = 0; i < (SInt32) m_num_sets; i++)
-      printf(" %" PRId64, m_set_usage_hist[i]);
-   printf("\n");
-   delete [] m_set_usage_hist;
-   #endif
+Cache::~Cache() {
+#ifdef ENABLE_SET_USAGE_HIST
+  printf("Cache %s set usage:", m_name.c_str());
+  for (const auto& e : m_set_usage_hist) {
+    printf(" %" PRId64, e);
+  }
+  printf("\n");
+#endif
 
-   if (m_set_info)
-      delete m_set_info;
-
-   for (SInt32 i = 0; i < (SInt32) m_num_sets; i++)
-      delete m_sets[i];
-   delete [] m_sets;
+  // Let the containers go out of scope and automatically call their respective
+  // destructors via RAII
 }
 
-Lock&
-Cache::getSetLock(IntPtr addr)
-{
-   IntPtr tag;
-   UInt32 set_index;
+Lock& Cache::getSetLock(IntPtr addr) {
+  IntPtr tag;
+  UInt32 set_index;
 
-   splitAddress(addr, tag, set_index);
-   assert(set_index < m_num_sets);
+  splitAddress(addr, tag, set_index);
+  assert(set_index < m_num_sets);
 
-   return m_sets[set_index]->getLock();
+  return m_sets[set_index]->getLock();
 }
 
-bool
-Cache::invalidateSingleLine(IntPtr addr)
-{
-   IntPtr tag;
-   UInt32 set_index;
+bool Cache::invalidateSingleLine(IntPtr addr) {
+  IntPtr tag;
+  UInt32 set_index;
 
-   splitAddress(addr, tag, set_index);
-   assert(set_index < m_num_sets);
+  splitAddress(addr, tag, set_index);
+  assert(set_index < m_num_sets);
 
-   return m_sets[set_index]->invalidate(tag);
+  return m_sets[set_index]->invalidate(tag);
 }
 
-CacheBlockInfo*
-Cache::accessSingleLine(IntPtr addr, access_t access_type,
-      Byte* buff, UInt32 bytes, SubsecondTime now, bool update_replacement)
-{
-   //assert((buff == NULL) == (bytes == 0));
+CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
+                                        Byte* acc_data, UInt32 bytes,
+                                        SubsecondTime now,
+                                        bool update_replacement,
+                                        WritebackLines* writebacks,
+                                        CacheCntlr* cntlr) {
 
-   IntPtr tag;
-   UInt32 set_index;
-   UInt32 line_index = -1;
-   UInt32 block_offset;
+  IntPtr tag;
+  UInt32 set_index;
+  UInt32 way;
+  UInt32 block_id;
+  UInt32 offset;
 
-   splitAddress(addr, tag, set_index, block_offset);
+  splitAddress(addr, tag, set_index, block_id, offset);
 
-   CacheSet* set = m_sets[set_index];
-   CacheBlockInfo* cache_block_info = set->find(tag, &line_index);
+  CacheSet* set                    = m_sets[set_index].get();
+  CacheBlockInfo* block_info = set->find(tag, &way, &block_id);
 
-   if (cache_block_info == NULL)
-      return NULL;
+  if (block_info == nullptr) return nullptr;
 
-   if (access_type == LOAD)
-   {
-      // NOTE: assumes error occurs in memory. If we want to model bus errors, insert the error into buff instead
-      if (m_fault_injector)
-         m_fault_injector->preRead(addr, set_index * m_associativity + line_index, bytes, (Byte*)m_sets[set_index]->getDataPtr(line_index, block_offset), now);
+  if (access_type == LOAD) {
+    set->readLine(way, block_id, offset, bytes, update_replacement, acc_data);
+  } else {
+    set->writeLine(way, block_id, offset, acc_data, bytes, update_replacement,
+                   writebacks, cntlr);
+  }
 
-      set->read_line(line_index, block_offset, buff, bytes, update_replacement);
-   }
-   else
-   {
-      set->write_line(line_index, block_offset, buff, bytes, update_replacement);
-
-      // NOTE: assumes error occurs in memory. If we want to model bus errors, insert the error into buff instead
-      if (m_fault_injector)
-         m_fault_injector->postWrite(addr, set_index * m_associativity + line_index, bytes, (Byte*)m_sets[set_index]->getDataPtr(line_index, block_offset), now);
-   }
-
-   return cache_block_info;
+  return block_info;
 }
 
-void
-Cache::insertSingleLine(IntPtr addr, Byte* fill_buff,
-      bool* eviction, IntPtr* evict_addr,
-      CacheBlockInfo* evict_block_info, Byte* evict_buff,
-      SubsecondTime now, CacheCntlr *cntlr)
-{
-   IntPtr tag;
-   UInt32 set_index;
-   splitAddress(addr, tag, set_index);
+void Cache::insertSingleLine(IntPtr addr, Byte* ins_data, SubsecondTime now,
+                             std::vector<IntPtr>* writeback_addrs,
+                             WritebackLines* writebacks, CacheCntlr* cntlr) {
 
-   CacheBlockInfo* cache_block_info = CacheBlockInfo::create(m_cache_type);
-   cache_block_info->setTag(tag);
+  assert(ins_data != nullptr);
+  assert(writeback_addrs != nullptr);
+  assert(writebacks != nullptr);
 
-   m_sets[set_index]->insert(cache_block_info, fill_buff,
-         eviction, evict_block_info, evict_buff, cntlr);
-   *evict_addr = tagToAddress(evict_block_info->getTag());
+  IntPtr tag;
+  UInt32 set_index;
+  UInt32 block_id;
+  splitAddress(addr, tag, set_index, block_id);
 
-   if (m_fault_injector) {
-      // NOTE: no callback is generated for read of evicted data
-      UInt32 line_index = -1;
-      __attribute__((unused)) CacheBlockInfo* res = m_sets[set_index]->find(tag, &line_index);
-      LOG_ASSERT_ERROR(res != NULL, "Inserted line no longer there?");
+  CacheBlockInfoUPtr block_info =
+      std::move(CacheBlockInfo::create(m_cache_type));
+  block_info->setTag(tag);
 
-      m_fault_injector->postWrite(addr, set_index * m_associativity + line_index, m_sets[set_index]->getBlockSize(), (Byte*)m_sets[set_index]->getDataPtr(line_index, 0), now);
-   }
+  // Record the number of writebacks prior to performing the insertion, so that
+  // we can iterate through the results and pick out their addresses
+  UInt32 prior_writebacks = writebacks->size();
 
-   #ifdef ENABLE_SET_USAGE_HIST
-   ++m_set_usage_hist[set_index];
-   #endif
+  CacheSet* set = m_sets[set_index].get();
+  set->insertLine(std::move(block_info), ins_data, writebacks, cntlr);
 
-   delete cache_block_info;
+  // Iterate through the new additions to the writebacks vector and add each of
+  // their addresses to the eviction queue.
+  //
+  // The tags consist of the upper address bits, minus the block offset, so it
+  // already includes the set index etc.
+  for (UInt32 i = prior_writebacks; i < writebacks->size(); ++i) {
+    const WritebackTuple& tmp_tuple            = (*writebacks)[i];
+    const CacheBlockInfo* tmp_block_info = std::get<0>(tmp_tuple).get();
+    IntPtr addr = tagToAddress(tmp_block_info->getTag());
+
+    writeback_addrs->push_back(addr);
+  }
+
+#ifdef ENABLE_SET_USAGE_HIST
+  ++m_set_usage_hist[set_index];
+#endif
 }
 
+CacheBlockInfo* Cache::peekSingleLine(IntPtr addr) {
+  IntPtr tag;
+  UInt32 set_index;
+  splitAddress(addr, tag, set_index);
 
-// Single line cache access at addr
-CacheBlockInfo*
-Cache::peekSingleLine(IntPtr addr)
-{
-   IntPtr tag;
-   UInt32 set_index;
-   splitAddress(addr, tag, set_index);
-
-   return m_sets[set_index]->find(tag);
+  return m_sets[set_index]->find(tag);
 }
 
-void
-Cache::updateCounters(bool cache_hit)
-{
-   if (m_enabled)
-   {
-      m_num_accesses ++;
-      if (cache_hit)
-         m_num_hits ++;
-   }
+void Cache::updateCounters(bool cache_hit) {
+  if (m_enabled) {
+    m_num_accesses++;
+
+    if (cache_hit) m_num_hits++;
+  }
 }
 
-void
-Cache::updateHits(Core::mem_op_t mem_op_type, UInt64 hits)
-{
-   if (m_enabled)
-   {
-      m_num_accesses += hits;
-      m_num_hits += hits;
-   }
+void Cache::updateHits(Core::mem_op_t mem_op_type, UInt64 hits) {
+  if (m_enabled) {
+    m_num_accesses += hits;
+    m_num_hits += hits;
+  }
 }
