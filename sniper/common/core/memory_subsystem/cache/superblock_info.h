@@ -5,21 +5,20 @@
 #include <cassert>
 
 #include "cache_block_info.h"
-#include "dish_utils.h"
+#include "compress_utils.h"
 
-using DISH::CacheBlockInfoUPtr;
-
-class SuperBlockInfo {
+class SuperblockInfo {
  private:
-  std::array<CacheBlockInfoUPtr, DISH::SUPERBLOCK_SIZE> m_block_infos;
+  std::array<CacheBlockInfoUPtr, SUPERBLOCK_SIZE> m_block_infos;
   bool m_valid[4];
-  IntPtr m_super_tag;
+  IntPtr m_supertag;
 
  public:
-  SuperBlockInfo(IntPtr super_tag = DISH::TAG_UNUSED);
+  SuperblockInfo(IntPtr supertag = TAG_UNUSED);
+  virtual ~SuperblockInfo();
 
-  CacheBlockInfo* getBlockInfo(UInt32 block_id) const {
-    assert(block_id < DISH::SUPERBLOCK_SIZE);
+  CacheBlockInfo* peekBlock(UInt32 block_id) const {
+    assert(block_id < SUPERBLOCK_SIZE);
 
     if (m_valid[block_id])
       return m_block_infos[block_id].get();
@@ -31,14 +30,14 @@ class SuperBlockInfo {
                           UInt32* block_id) const;
 
   bool isValid() const {
-    for (UInt32 i = 0; i < DISH::SUPERBLOCK_SIZE; ++i) {
+    for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
       if (m_valid[i]) return true;
     }
 
     return false;
   }
   bool isValid(UInt32 block_id) const {
-    assert(block_id < DISH::SUPERBLOCK_SIZE);
+    assert(block_id < SUPERBLOCK_SIZE);
 
     return m_valid[block_id];
   }
@@ -49,6 +48,7 @@ class SuperBlockInfo {
 
   bool compareTags(UInt32 tag, UInt32* block_id = nullptr) const;
 
+  bool isValidReplacement() const;
   bool invalidate(UInt32 tag);
 };
 
