@@ -169,7 +169,7 @@ bool CompressBlockData::isScheme2Compressible(UInt32 block_id, UInt32 offset,
     
     UInt32 tmp_vacancies = m_free_ptrs.size();
     for (UInt32 i = start_chunk; i < end_chunk; ++i) {
-      if (!lookupDictEntry(wr_data_chunks[i])) {
+      if (!lookupDictEntry(wr_data_chunks[i] & (~((UInt32)0xF)) )) {
         if (tmp_vacancies == 0) {
           return false;  // Early stopping condition
         } else {
@@ -197,7 +197,7 @@ bool CompressBlockData::isScheme2Compressible(UInt32 block_id, UInt32 offset,
     
     // Add all chunks from currently uncompressed line to set
     for (UInt32 i = 0; i < DISH::BLOCK_ENTRIES; ++i) {
-      unique_chunks.insert(data_uncompressed_chunks[i]);
+      unique_chunks.insert(data_uncompressed_chunks[i] & (~((UInt32)0xF)));
     }
     
     if (wr_data != nullptr && bytes != 0) {
@@ -210,11 +210,11 @@ bool CompressBlockData::isScheme2Compressible(UInt32 block_id, UInt32 offset,
       
       // Add all chunks from wr_datauncompressed line to set
       for (UInt32 i = start_chunk; i < end_chunk; ++i) {
-        unique_chunks.insert(wr_data_chunks[i]);
+        unique_chunks.insert(wr_data_chunks[i] & (~((UInt32)0xF)));
       }
     }
     
-    return unique_chunks.size() <= DISH::SCHEME1_DICT_SIZE;
+    return unique_chunks.size() <= DISH::SCHEME2_DICT_SIZE;
   }
   
   return false;
@@ -248,6 +248,7 @@ bool CompressBlockData::isCompressible(UInt32 block_id, UInt32 offset,
         return false;
     }
   }
+  return false;
 }
 
 void CompressBlockData::compactScheme1() {
