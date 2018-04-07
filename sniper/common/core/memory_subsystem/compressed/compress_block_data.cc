@@ -5,6 +5,8 @@
 #include "fixed_types.h"
 #include "log.h"
 
+static const UInt32 scheme2_mask = ~((UInt32)0xF);
+
 bool CompressBlockData::lookupDictEntry(UInt32 value, UInt8* ptr) {
   for (const auto& entry : m_dict) {
     if (entry.second == value) {
@@ -158,18 +160,20 @@ bool CompressBlockData::isScheme2Compressible(UInt32 block_id, UInt32 offset,
                                          const Byte* wr_data, UInt32 bytes) {
   assert(isValid());
   
-  if (m_scheme == DISH::scheme::SCHEME2) {
+  if (m_scheme == DISH::scheme::SCHEME1) {
+    // Do not convert between compression schemes on-the-fly
     return false;
+  } else if (m_scheme == DISH::scheme::SCHEME2) {
     // Cast to a 4-word type, which has the same granularity of cache blocks
     // in DISH
     const UInt32* wr_data_chunks = reinterpret_cast<const UInt32*>(wr_data);
     UInt32 start_chunk           = offset / DISH::GRANULARITY_BYTES;
     UInt32 end_chunk = (offset + bytes + DISH::GRANULARITY_BYTES - 1) /
     DISH::GRANULARITY_BYTES;
-    
+  
     UInt32 tmp_vacancies = m_free_ptrs.size();
     for (UInt32 i = start_chunk; i < end_chunk; ++i) {
-      if (!lookupDictEntry(wr_data_chunks[i] & (~((UInt32)0xF)) )) {
+      if (!lookupDictEntry(wr_data_chunks[i] & scheme2_mask )) {
         if (tmp_vacancies == 0) {
           return false;  // Early stopping condition
         } else {
@@ -177,13 +181,8 @@ bool CompressBlockData::isScheme2Compressible(UInt32 block_id, UInt32 offset,
         }
       }
     }
-    
     return true;
-  } else if (m_scheme == DISH::scheme::SCHEME1) {
-    // Do not convert between compression schemes on-the-fly
-    return false;
   } else if (m_scheme == DISH::scheme::UNCOMPRESSED) {
-    return false;
     // Need to check compression with the currently uncompressed line
     std::unordered_set<UInt32> unique_chunks;
     
@@ -197,7 +196,7 @@ bool CompressBlockData::isScheme2Compressible(UInt32 block_id, UInt32 offset,
     
     // Add all chunks from currently uncompressed line to set
     for (UInt32 i = 0; i < DISH::BLOCK_ENTRIES; ++i) {
-      unique_chunks.insert(data_uncompressed_chunks[i] & (~((UInt32)0xF)));
+      unique_chunks.insert(data_uncompressed_chunks[i] & scheme2_mask);
     }
     
     if (wr_data != nullptr && bytes != 0) {
@@ -210,7 +209,7 @@ bool CompressBlockData::isScheme2Compressible(UInt32 block_id, UInt32 offset,
       
       // Add all chunks from wr_datauncompressed line to set
       for (UInt32 i = start_chunk; i < end_chunk; ++i) {
-        unique_chunks.insert(wr_data_chunks[i] & (~((UInt32)0xF)));
+        unique_chunks.insert(wr_data_chunks[i] & scheme2_mask);
       }
     }
     
@@ -285,6 +284,40 @@ void CompressBlockData::compactScheme1() {
   }
 }
 
+void CompressBlockData::compactScheme2() {
+  for (auto entry_it = m_dict.begin(); entry_it != m_dict.end();) {
+    bool entry_used = false;
+    for (UInt32 block_id = 0; block_id < DISH::SUPERBLOCK_SIZE; ++block_id) {
+      if (entry_used) break;  // Early stopping condition
+      
+      if (!m_valid[block_id]) {
+        continue;  // Do not search invalid blocks for value
+      }
+      
+      const UInt32* data_chunks =
+      reinterpret_cast<const UInt32*>(&m_data[block_id][0]);
+      
+      for (UInt32 i = 0; i < DISH::BLOCK_ENTRIES; ++i) {
+        if (entry_it->second == (data_chunks[i] & scheme2_mask)) {
+          entry_used = true;
+          break;
+        }
+      }
+    }
+    
+    if (!entry_used) {
+      UInt8 ptr = entry_it->first;
+      
+      // Must use erase-remove idiom here, not removeDictEntry
+      m_used_ptrs.erase(ptr);             // Remove from used list
+      entry_it = m_dict.erase(entry_it);  // Remove the dictionary entry
+      m_free_ptrs.insert(ptr);            // Add to free list
+    } else {
+      ++entry_it;
+    }
+  }
+}
+
 void CompressBlockData::compact() {
   if (!isValid()) return;
 
@@ -325,7 +358,7 @@ void CompressBlockData::compressScheme1(UInt32 block_id, UInt32 offset,
                        DISH::GRANULARITY_BYTES;
 
     for (UInt32 i = start_chunk; i < end_chunk; ++i) {
-      m_data[block_id][i] = insertDictEntry(wr_data_chunks[i]);
+      m_data_ptrs[block_id][i] = insertDictEntry(wr_data_chunks[i]);
     }
   } else if (m_scheme == DISH::scheme::UNCOMPRESSED) {
     // Find the uncompressed block_id.  Guaranteed to be valid due to
@@ -337,7 +370,7 @@ void CompressBlockData::compressScheme1(UInt32 block_id, UInt32 offset,
         reinterpret_cast<const UInt32*>(&m_data[uncompressed_block_id][0]);
 
     for (UInt32 i = 0; i < DISH::BLOCK_ENTRIES; ++i) {
-      insertDictEntry(data_uncompressed_chunks[i]);
+      m_data_ptrs[uncompressed_block_id][i] = insertDictEntry(data_uncompressed_chunks[i]);
     }
 
     // Cast to a 4-word type, which has the same granularity of cache blocks in
@@ -348,7 +381,7 @@ void CompressBlockData::compressScheme1(UInt32 block_id, UInt32 offset,
                        DISH::GRANULARITY_BYTES;
 
     for (UInt32 i = start_chunk; i < end_chunk; ++i) {
-      insertDictEntry(wr_data_chunks[i]);
+      m_data_ptrs[block_id][i] = insertDictEntry(wr_data_chunks[i]);
     }
   } else if (m_scheme == DISH::scheme::SCHEME1) {
     // Cast to a 4-word type, which has the same granularity of cache blocks in
@@ -359,7 +392,7 @@ void CompressBlockData::compressScheme1(UInt32 block_id, UInt32 offset,
                        DISH::GRANULARITY_BYTES;
 
     for (UInt32 i = start_chunk; i < end_chunk; ++i) {
-      insertDictEntry(wr_data_chunks[i]);
+      m_data_ptrs[block_id][i] = insertDictEntry(wr_data_chunks[i]);
     }
   } else if (m_scheme == DISH::scheme::SCHEME2) {
     LOG_PRINT_ERROR("Invalid attempt to change compression scheme on-the-fly");
@@ -367,6 +400,76 @@ void CompressBlockData::compressScheme1(UInt32 block_id, UInt32 offset,
     assert(false);
   }
 }
+
+void CompressBlockData::compressScheme2(UInt32 block_id, UInt32 offset,
+                                        const Byte* wr_data, UInt32 bytes) {
+  
+  LOG_ASSERT_ERROR(
+                   isCompressible(block_id, offset, wr_data, bytes),
+                   "Invalid attempt to compress %u bytes from offset %u into block %u",
+                   bytes, offset, block_id, DISH::scheme::SCHEME2);
+  
+  // Handle trivial case explicitly
+  if (wr_data == nullptr || bytes == 0) return;
+  
+  if (!isValid()) {
+    initScheme(DISH::scheme::SCHEME2);
+    
+    // Cast to a 4-word type, which has the same granularity of cache blocks in
+    // DISH
+    const UInt32* wr_data_chunks = reinterpret_cast<const UInt32*>(wr_data);
+    UInt32 start_chunk           = offset / DISH::GRANULARITY_BYTES;
+    UInt32 end_chunk = (offset + bytes + DISH::GRANULARITY_BYTES - 1) /
+    DISH::GRANULARITY_BYTES;
+    
+    for (UInt32 i = start_chunk; i < end_chunk; ++i) {
+      m_data_ptrs[block_id][i] = insertDictEntry(wr_data_chunks[i] & scheme2_mask);
+      m_data_offsets[block_id][i] = wr_data_chunks[i] & 0xF;
+    }
+  } else if (m_scheme == DISH::scheme::UNCOMPRESSED) {
+    // Find the uncompressed block_id.  Guaranteed to be valid due to
+    // pre-condition of function
+    UInt32 uncompressed_block_id = getFirstValid();
+    assert(uncompressed_block_id != DISH::SUPERBLOCK_SIZE);  // Not necessary
+    
+    const UInt32* data_uncompressed_chunks =
+    reinterpret_cast<const UInt32*>(&m_data[uncompressed_block_id][0]);
+    
+    for (UInt32 i = 0; i < DISH::BLOCK_ENTRIES; ++i) {
+      m_data_ptrs[uncompressed_block_id][i] = insertDictEntry(data_uncompressed_chunks[i] & scheme2_mask);
+      m_data_offsets[uncompressed_block_id][i] = data_uncompressed_chunks[i] & 0xF;
+    }
+    
+    // Cast to a 4-word type, which has the same granularity of cache blocks in
+    // DISH
+    const UInt32* wr_data_chunks = reinterpret_cast<const UInt32*>(wr_data);
+    UInt32 start_chunk           = offset / DISH::GRANULARITY_BYTES;
+    UInt32 end_chunk = (offset + bytes + DISH::GRANULARITY_BYTES - 1) /
+    DISH::GRANULARITY_BYTES;
+    
+    for (UInt32 i = start_chunk; i < end_chunk; ++i) {
+      m_data_ptrs[block_id][i] = insertDictEntry(wr_data_chunks[i] & scheme2_mask);
+      m_data_offsets[block_id][i] = wr_data_chunks[i] & 0xF;
+    }
+  } else if (m_scheme == DISH::scheme::SCHEME2) {
+    // Cast to a 4-word type, which has the same granularity of cache blocks in
+    // DISH
+    const UInt32* wr_data_chunks = reinterpret_cast<const UInt32*>(wr_data);
+    UInt32 start_chunk           = offset / DISH::GRANULARITY_BYTES;
+    UInt32 end_chunk = (offset + bytes + DISH::GRANULARITY_BYTES - 1) /
+    DISH::GRANULARITY_BYTES;
+    
+    for (UInt32 i = start_chunk; i < end_chunk; ++i) {
+      m_data_ptrs[block_id][i] = insertDictEntry(wr_data_chunks[i]);
+      m_data_offsets[block_id][i] = wr_data_chunks[i] & 0xF;
+    }
+  } else if (m_scheme == DISH::scheme::SCHEME1) {
+    LOG_PRINT_ERROR("Invalid attempt to change compression scheme on-the-fly");
+  } else {
+    assert(false);
+  }
+}
+
 
 void CompressBlockData::compress(UInt32 block_id, UInt32 offset,
                                  const Byte* wr_data, UInt32 bytes) {
