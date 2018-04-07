@@ -75,8 +75,12 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
                                         Byte* acc_data, UInt32 bytes,
                                         SubsecondTime now,
                                         bool update_replacement,
+                                        std::vector<IntPtr>* writeback_addrs,
                                         WritebackLines* writebacks,
                                         CacheCntlr* cntlr) {
+  assert(writeback_addrs != nullptr);
+  assert(writebacks != nullptr);
+  UInt32 prior_writebacks = writebacks->size();
 
   IntPtr tag;
   UInt32 set_index;
@@ -96,6 +100,13 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
   } else {
     set->writeLine(way, block_id, offset, acc_data, bytes, update_replacement,
                    writebacks, cntlr);
+  }
+  for (UInt32 i = prior_writebacks; i < writebacks->size(); ++i) {
+    const WritebackTuple& tmp_tuple            = (*writebacks)[i];
+    const CacheBlockInfo* tmp_block_info = std::get<0>(tmp_tuple).get();
+    IntPtr addr = tagToAddress(tmp_block_info->getTag());
+    
+    writeback_addrs->push_back(addr);
   }
 
   return block_info;

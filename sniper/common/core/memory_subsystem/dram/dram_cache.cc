@@ -38,7 +38,7 @@ DramCache::DramCache(MemoryManagerBase* memory_manager, ShmemPerfModel* shmem_pe
       "perf_model/dram/cache",
       m_core_id,
       num_sets,
-      associativity,
+      associativity, false, // DRAM cache compression isn't supported (yet?)
       m_cache_block_size,
       Sim()->getCfg()->getStringArray("perf_model/dram/cache/replacement_policy", m_core_id),
       CacheBase::PR_L1_CACHE,
