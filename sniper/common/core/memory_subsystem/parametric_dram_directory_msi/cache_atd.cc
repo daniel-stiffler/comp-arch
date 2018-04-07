@@ -6,7 +6,8 @@
 #include "rng.h"
 
 ATD::ATD(String name, String configName, core_id_t core_id, UInt32 num_sets, UInt32 associativity,
-         UInt32 cache_block_size, String replacement_policy, CacheBase::hash_t hash_function)
+         bool compressible, UInt32 cache_block_size, String replacement_policy,
+         CacheBase::hash_t hash_function)
    : m_cache_base(name, num_sets, associativity, cache_block_size, hash_function)
    , m_sets()
    , loads(0)
@@ -18,7 +19,7 @@ ATD::ATD(String name, String configName, core_id_t core_id, UInt32 num_sets, UIn
    , loads_destructive(0)
    , stores_destructive(0)
 {
-   m_set_info = CacheSet::createCacheSetInfo(name, configName, core_id, replacement_policy, associativity);
+   m_set_info = CacheSet::createCacheSetInfo(name, configName, core_id, replacement_policy, associativity, compressible);
 
    registerStatsMetric(name, core_id, "loads", &loads);
    registerStatsMetric(name, core_id, "stores", &stores);
@@ -34,7 +35,7 @@ ATD::ATD(String name, String configName, core_id_t core_id, UInt32 num_sets, UIn
    {
       for(UInt64 set_index = 0; set_index < num_sets; ++set_index)
       {
-         m_sets[set_index] = CacheSet::createCacheSet(name, core_id, replacement_policy, CacheBase::PR_L1_CACHE, associativity, 0, m_set_info);
+         m_sets[set_index] = CacheSet::createCacheSet(name, core_id, replacement_policy, CacheBase::PR_L1_CACHE, associativity, 0, compressible, m_set_info.get());
       }
    }
    else if (sampling == "2^n+1")
@@ -42,7 +43,7 @@ ATD::ATD(String name, String configName, core_id_t core_id, UInt32 num_sets, UIn
       // Sample sets at indexes 2^N+1
       for(UInt64 set_index = 1; set_index < num_sets - 1; set_index <<= 1)
       {
-         m_sets[set_index+1] = CacheSet::createCacheSet(name, core_id, replacement_policy, CacheBase::PR_L1_CACHE, associativity, 0, m_set_info);
+         m_sets[set_index+1] = CacheSet::createCacheSet(name, core_id, replacement_policy, CacheBase::PR_L1_CACHE, associativity, 0, compressible, m_set_info.get());
       }
    }
    else if (sampling == "random")
@@ -59,7 +60,7 @@ ATD::ATD(String name, String configName, core_id_t core_id, UInt32 num_sets, UIn
          UInt64 set_index = rng_next(state) % num_sets;
          if (m_sets.count(set_index) == 0)
          {
-            m_sets[set_index] = CacheSet::createCacheSet(name, core_id, replacement_policy, CacheBase::PR_L1_CACHE, associativity, 0, m_set_info);
+            m_sets[set_index] = CacheSet::createCacheSet(name, core_id, replacement_policy, CacheBase::PR_L1_CACHE, associativity, 0, compressible, m_set_info.get());
             --num_atds;
          }
          LOG_ASSERT_ERROR(++num_attempts < 10 * num_sets, "Cound not find unique ATD sets even after many attempts");
@@ -73,8 +74,6 @@ ATD::ATD(String name, String configName, core_id_t core_id, UInt32 num_sets, UIn
 
 ATD::~ATD()
 {
-   if (m_set_info)
-      delete m_set_info;
 }
 
 bool ATD::isSampledSet(UInt32 set_index)
@@ -94,13 +93,14 @@ void ATD::access(Core::mem_op_t mem_op_type, bool cache_hit, IntPtr address)
 
       if (atd_hit)
       {
-         m_sets[set_index]->updateReplacementIndex(line_index);
+         m_sets[set_index]->updateReplacementWay(line_index);
       }
       else
       {
+         // eviction fixme
          PrL1CacheBlockInfo* cache_block_info = new PrL1CacheBlockInfo(tag, CacheState::MODIFIED);
-         bool eviction; PrL1CacheBlockInfo evict_block_info;
-         m_sets[set_index]->insert(cache_block_info, NULL, &eviction, &evict_block_info, NULL);
+         WritebackLines evictions;
+         m_sets[set_index]->insertLine(std::unique_ptr<PrL1CacheBlockInfo>(cache_block_info), NULL, &evictions, NULL);
          delete cache_block_info;
       }
 

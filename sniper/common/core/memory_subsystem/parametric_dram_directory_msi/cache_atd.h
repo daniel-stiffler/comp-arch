@@ -14,8 +14,8 @@ class ATD
 {
    private:
       CacheBase m_cache_base;
-      std::unordered_map<UInt32, CacheSet*> m_sets;
-      CacheSetInfo *m_set_info;
+  std::unordered_map<UInt32, std::unique_ptr<CacheSet>> m_sets;
+      std::unique_ptr<CacheSetInfo> m_set_info;
 
       UInt64 loads, stores;
       UInt64 load_misses, store_misses;
@@ -26,7 +26,8 @@ class ATD
 
    public:
       ATD(String name, String configName, core_id_t core_id, UInt32 num_sets, UInt32 associativity,
-          UInt32 cache_block_size, String replacement_policy, CacheBase::hash_t hash_function);
+          bool compressible, UInt32 cache_block_size, String replacement_policy,
+          CacheBase::hash_t hash_function);
       ~ATD();
 
       void access(Core::mem_op_t mem_op_type, bool hit, IntPtr address);
