@@ -17,6 +17,8 @@ constexpr UInt32 SCHEME2_DICT_SIZE = 4;
 constexpr UInt32 GRANULARITY_BYTES = 4;
 constexpr UInt32 BLOCK_ENTRIES     = 16;
 
+constexpr UInt32 SCHEME2_MASK = 0xf;
+
 enum class scheme_t { UNCOMPRESSED, SCHEME1, SCHEME2 };
 }  // namespace DISH
 

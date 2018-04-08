@@ -25,7 +25,7 @@ class BlockData {
   std::unordered_set<UInt8> m_used_ptrs;
   // "Pointers" to elements in the dictionary
   //   - Scheme 1 uses log2(DISH::SCHEME1_DICT_SIZE) = 3-bit
-  //   - Scheme 2 uses log2(DISH::SCHEME1_DICT_SIZE) = 2-bit
+  //   - Scheme 2 uses log2(DISH::SCHEME2_DICT_SIZE) = 2-bit
   UInt8 m_data_ptrs[SUPERBLOCK_SIZE][DISH::BLOCK_ENTRIES];
   // Dictionary pointer offsets for Scheme 2 compression
   UInt8 m_data_offsets[SUPERBLOCK_SIZE][DISH::BLOCK_ENTRIES];
