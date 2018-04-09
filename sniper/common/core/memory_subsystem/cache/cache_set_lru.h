@@ -2,6 +2,8 @@
 #define __CACHE_SET_LRU_H__
 
 #include <cassert>
+#include <list>
+#include <unordered_map>
 
 #include "cache_set.h"
 
@@ -46,7 +48,12 @@ class CacheSetLRU : public CacheSet {
 
  protected:
   const UInt8 m_num_attempts;
-  std::vector<UInt8> m_lru_priorities;
+
+  // LRU cache is represented as a doubly-linked list and hash table which maps
+  // elements to their references in the list
+  std::unordered_map<UInt32, std::list<UInt32>::iterator> m_lru_places;
+  std::list<UInt32> m_lru_priorities;
+
   CacheSetInfoLRU* m_set_info;
 
   void moveToMRU(UInt32 accessed_way);

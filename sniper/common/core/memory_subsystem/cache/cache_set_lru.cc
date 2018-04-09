@@ -11,10 +11,13 @@ CacheSetLRU::CacheSetLRU(CacheBase::cache_t cache_type, UInt32 associativity,
                          CacheSetInfoLRU* set_info, UInt8 num_attempts)
     : CacheSet(cache_type, associativity, blocksize, compressible),
       m_num_attempts(num_attempts),
-      m_lru_priorities(associativity),
+      m_lru_places(associativity),  // Maximum number of buckets
       m_set_info(set_info) {
 
-  for (auto& e : m_lru_priorities) e = 0;
+  for (UInt32 i = 0; i < m_associativity; ++i) {
+    m_lru_priorities.push_back(i);
+    m_lru_places.insert({i, std::prev(m_lru_priorities.end())});
+  }
 }
 
 CacheSetLRU::~CacheSetLRU() {
@@ -34,15 +37,7 @@ UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
 
   // Make m_num_attemps attempts at evicting the block at LRU position
   for (UInt8 attempt = 0; attempt < m_num_attempts; ++attempt) {
-    UInt32 repl_way  = 0;
-    UInt8 oldest_lru = 0;
-    for (UInt32 i = 0; i < m_associativity; ++i) {
-      if (m_lru_priorities[i] > oldest_lru && isValidReplacement(i)) {
-        repl_way   = i;
-        oldest_lru = m_lru_priorities[i];
-      }
-    }
-    LOG_ASSERT_ERROR(repl_way < m_associativity, "Error Finding LRU bits");
+    UInt32 repl_way = m_lru_priorities.back();
 
     bool qbs_reject = false;
     if (attempt <
@@ -86,17 +81,21 @@ UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
 }
 
 void CacheSetLRU::updateReplacementWay(UInt32 accessed_way) {
-  m_set_info->increment(m_lru_priorities[accessed_way]);
+  // Subtract the iterators to get the priority
+  UInt32 prev_priority =
+      std::distance(m_lru_places[accessed_way], m_lru_priorities.begin());
+
+  m_set_info->increment(prev_priority);
   moveToMRU(accessed_way);
 }
 
 void CacheSetLRU::moveToMRU(UInt32 accessed_way) {
-  for (UInt32 i = 0; i < m_associativity; i++) {
-    if (m_lru_priorities[i] < m_lru_priorities[accessed_way])
-      m_lru_priorities[i]++;
-  }
+  assert(accessed_way < m_associativity);
 
-  m_lru_priorities[accessed_way] = 0;
+  std::list<UInt32>::iterator prev_it = m_lru_places[accessed_way];
+  m_lru_priorities.erase(prev_it);
+  m_lru_priorities.push_back(accessed_way);
+  m_lru_places[accessed_way] = std::prev(m_lru_priorities.end());
 }
 
 CacheSetInfoLRU::CacheSetInfoLRU(String name, String cfgname, core_id_t core_id,

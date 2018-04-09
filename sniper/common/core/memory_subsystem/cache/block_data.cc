@@ -76,9 +76,9 @@ BlockData::BlockData(UInt32 blocksize)
       m_scheme{DISH::scheme_t::UNCOMPRESSED},
       m_valid{false},
       m_data{{0}},
-      m_dict(DISH::SCHEME1_DICT_SIZE),
-      m_free_ptrs(DISH::SCHEME1_DICT_SIZE),
-      m_used_ptrs(DISH::SCHEME1_DICT_SIZE),
+      m_dict(DISH::SCHEME1_DICT_SIZE),       // Maximum number of buckets
+      m_free_ptrs(DISH::SCHEME1_DICT_SIZE),  // Maximum number of buckets
+      m_used_ptrs(DISH::SCHEME1_DICT_SIZE),  // Maximum number of buckets
       m_data_ptrs{{0}},
       m_data_offsets{{0}} {
   LOG_ASSERT_ERROR(blocksize == BLOCKSIZE_BYTES,
