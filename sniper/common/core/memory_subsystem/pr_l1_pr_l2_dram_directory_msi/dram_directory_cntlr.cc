@@ -1201,19 +1201,21 @@ DramDirectoryCntlr::sendDataToNUCA(IntPtr address, core_id_t requester, Byte* da
 {
    if (m_nuca_cache)
    {
-      bool eviction;
-      IntPtr evict_address;
-      Byte evict_buf[getCacheBlockSize()];
+     std::vector<IntPtr> eviction_addrs;
+     WritebackLines evictions;
 
       m_nuca_cache->write(
          address, data_buf,
-         eviction, evict_address, evict_buf,
          getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_SIM_THREAD),
-         count
+         count, &eviction_addrs, &evictions
       );
 
-      if (eviction)
+      while (!eviction_addrs.empty())
       {
+         IntPtr evict_address = eviction_addrs[eviction_addrs.size() - 1];
+         eviction_addrs.pop_back();
+        auto evict_tuple = std::move(evictions[evictions.size() - 1]);
+         evictions.pop_back();
          // Write data to Dram
          core_id_t dram_node = m_dram_controller_home_lookup->getHome(evict_address);
 
@@ -1222,7 +1224,7 @@ DramDirectoryCntlr::sendDataToNUCA(IntPtr address, core_id_t requester, Byte* da
                m_core_id /* requester */,
                dram_node /* receiver */,
                evict_address,
-               evict_buf, getCacheBlockSize(),
+               std::get<1>(evict_tuple).get(), getCacheBlockSize(),
                HitWhere::UNKNOWN,
                NULL,
                ShmemPerfModel::_SIM_THREAD);

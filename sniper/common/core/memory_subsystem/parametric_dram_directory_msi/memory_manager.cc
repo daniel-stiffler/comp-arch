@@ -253,7 +253,7 @@ MemoryManager::MemoryManager(Core* core,
                this,
                getShmemPerfModel(),
                m_tag_directory_home_lookup,
-               getCacheBlockSize(),
+               getCacheBlockSize(), false, // don't support nuca cache compression (yet)
                nuca_parameters);
             Sim()->getStatsManager()->logTopology("nuca-cache", core->getId(), core->getId());
          }
