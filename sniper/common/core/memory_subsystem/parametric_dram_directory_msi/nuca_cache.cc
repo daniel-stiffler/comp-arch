@@ -6,7 +6,7 @@
 #include "queue_model.h"
 #include "shmem_perf.h"
 
-NucaCache::NucaCache(MemoryManagerBase* memory_manager, ShmemPerfModel* shmem_perf_model, AddressHomeLookup* home_lookup, UInt32 cache_block_size, ParametricDramDirectoryMSI::CacheParameters& parameters)
+NucaCache::NucaCache(MemoryManagerBase* memory_manager, ShmemPerfModel* shmem_perf_model, AddressHomeLookup* home_lookup, UInt32 cache_block_size, bool compressed, ParametricDramDirectoryMSI::CacheParameters& parameters)
    : m_core_id(memory_manager->getCore()->getId())
    , m_memory_manager(memory_manager)
    , m_shmem_perf_model(shmem_perf_model)
@@ -27,6 +27,7 @@ NucaCache::NucaCache(MemoryManagerBase* memory_manager, ShmemPerfModel* shmem_pe
       parameters.num_sets,
       parameters.associativity,
       m_cache_block_size,
+      compressed, // NUCA cache doesn't support comrpession
       parameters.replacement_policy,
       CacheBase::PR_L1_CACHE,
       CacheBase::parseAddressHash(parameters.hash_function),
@@ -65,8 +66,11 @@ NucaCache::read(IntPtr address, Byte* data_buf, SubsecondTime now, ShmemPerf *pe
 
    if (block_info)
    {
-      m_cache->accessSingleLine(address, Cache::LOAD, data_buf, m_cache_block_size, now + latency, true);
+      WritebackLines evictions;
+      std::vector<IntPtr> eviction_addrs;
 
+      m_cache->accessSingleLine(address, Cache::LOAD, data_buf, m_cache_block_size, now + latency, true, &eviction_addrs, &evictions);
+      assert(eviction_addrs.empty());
       latency += accessDataArray(Cache::LOAD, now + latency, perf);
       hit_where = HitWhere::NUCA_CACHE;
    }
@@ -80,18 +84,19 @@ NucaCache::read(IntPtr address, Byte* data_buf, SubsecondTime now, ShmemPerf *pe
 }
 
 boost::tuple<SubsecondTime, HitWhere::where_t>
-NucaCache::write(IntPtr address, Byte* data_buf, bool& eviction, IntPtr& evict_address, Byte* evict_buf, SubsecondTime now, bool count)
+NucaCache::write(IntPtr address, Byte* data_buf, SubsecondTime now, bool count, std::vector<IntPtr>* eviction_addrs, WritebackLines* evictions)
 {
    HitWhere::where_t hit_where = HitWhere::MISS;
 
    PrL1CacheBlockInfo* block_info = (PrL1CacheBlockInfo*)m_cache->peekSingleLine(address);
    SubsecondTime latency = m_tags_access_time.getLatency();
+   std::vector<IntPtr> _eviction_addrs;
+   WritebackLines _evictions;
 
    if (block_info)
    {
       block_info->setCState(CacheState::MODIFIED);
-      m_cache->accessSingleLine(address, Cache::STORE, data_buf, m_cache_block_size, now + latency, true);
-
+      m_cache->accessSingleLine(address, Cache::STORE, data_buf, m_cache_block_size, now + latency, true, &_eviction_addrs, &_evictions);
       latency += accessDataArray(Cache::STORE, now + latency, NULL);
       hit_where = HitWhere::NUCA_CACHE;
    }
@@ -100,21 +105,22 @@ NucaCache::write(IntPtr address, Byte* data_buf, bool& eviction, IntPtr& evict_a
       PrL1CacheBlockInfo evict_block_info;
 
       m_cache->insertSingleLine(address, data_buf,
-         &eviction, &evict_address, &evict_block_info, evict_buf,
-         now + latency);
-
-      if (eviction)
-      {
-         if (evict_block_info.getCState() != CacheState::MODIFIED)
-         {
-            // Unless data is dirty, don't have caller write it back
-            eviction = false;
-         }
-      }
-
+         now + latency, &_eviction_addrs, &_evictions, NULL);
+     
       if (count) ++m_write_misses;
    }
    if (count) ++m_writes;
+  
+   if (!_eviction_addrs.empty())
+   {
+      for(size_t i = 0; i < _eviction_addrs.size(); i++) {
+         if (std::get<0>((*evictions)[i])->getCState() == CacheState::MODIFIED)
+         {
+            eviction_addrs->push_back(_eviction_addrs[i]);
+           evictions->push_back(std::move(_evictions[i]));
+         }
+      }
+   }
 
    return boost::tuple<SubsecondTime, HitWhere::where_t>(latency, hit_where);
 }

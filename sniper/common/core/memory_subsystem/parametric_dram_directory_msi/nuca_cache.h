@@ -34,11 +34,11 @@ class NucaCache
       SubsecondTime accessDataArray(Cache::access_t access, SubsecondTime t_start, ShmemPerf *perf);
 
    public:
-      NucaCache(MemoryManagerBase* memory_manager, ShmemPerfModel* shmem_perf_model, AddressHomeLookup* home_lookup, UInt32 cache_block_size, ParametricDramDirectoryMSI::CacheParameters& parameters);
+      NucaCache(MemoryManagerBase* memory_manager, ShmemPerfModel* shmem_perf_model, AddressHomeLookup* home_lookup, UInt32 cache_block_size, bool compressed, ParametricDramDirectoryMSI::CacheParameters& parameters);
       ~NucaCache();
 
       boost::tuple<SubsecondTime, HitWhere::where_t> read(IntPtr address, Byte* data_buf, SubsecondTime now, ShmemPerf *perf, bool count);
-      boost::tuple<SubsecondTime, HitWhere::where_t> write(IntPtr address, Byte* data_buf, bool& eviction, IntPtr& evict_address, Byte* evict_buf, SubsecondTime now, bool count);
+      boost::tuple<SubsecondTime, HitWhere::where_t> write(IntPtr address, Byte* data_buf, SubsecondTime now, bool count, std::vector<IntPtr>* eviction_addrs, WritebackLines* evictions);
 };
 
 #endif // __NUCA_CACHE_H
