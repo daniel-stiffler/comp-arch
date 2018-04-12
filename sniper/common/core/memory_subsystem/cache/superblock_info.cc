@@ -4,7 +4,7 @@
 #include <utility>
 
 SuperblockInfo::SuperblockInfo(IntPtr supertag)
-    : m_valid{false}, m_supertag(supertag) {}
+    : m_supertag(supertag) {}
 
 SuperblockInfo::~SuperblockInfo() {
   // RAII takes care of destructing everything for us
@@ -31,7 +31,7 @@ bool SuperblockInfo::compareTags(UInt32 tag, UInt32* block_id) const {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     const CacheBlockInfo* block_info = m_block_infos[i].get();
 
-    if (m_valid[i] && tag == block_info->getTag()) {
+    if (block_info->isValid() && tag == block_info->getTag()) {
       if (block_id != nullptr) *block_id = i;
       return true;
     }
@@ -42,9 +42,10 @@ bool SuperblockInfo::compareTags(UInt32 tag, UInt32* block_id) const {
 
 bool SuperblockInfo::isValidReplacement() const {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-    if (m_valid[i] &&
-        m_block_infos[i]->getCState() == CacheState::SHARED_UPGRADING) {
+    const CacheBlockInfo* block_info = m_block_infos[i].get();
 
+    if (block_info->isValid() &&
+        block_info->getCState() == CacheState::SHARED_UPGRADING) {
       return false;
     }
   }
@@ -56,8 +57,9 @@ bool SuperblockInfo::invalidate(UInt32 tag) {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     CacheBlockInfo* block_info = m_block_infos[i].get();
 
-    if (m_valid[i] && tag == block_info->getTag()) {
+    if (block_info->isValid() && tag == block_info->getTag()) {
       block_info->invalidate();
+
       return true;
     }
   }

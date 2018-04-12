@@ -91,6 +91,7 @@ void CacheSet::readLine(UInt32 way, UInt32 block_id, UInt32 offset,
                         UInt32 bytes, bool update_replacement, Byte* rd_data) {
 
   assert(offset + bytes <= m_blocksize);
+  assert((rd_data != nullptr) || (rd_data == nullptr && bytes == 0));
 
   const SuperblockInfo& superblock_info = m_superblock_info_ways[way];
   assert(superblock_info.isValid(block_id));
@@ -105,8 +106,9 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
                          const Byte* wr_data, UInt32 bytes,
                          bool update_replacement, WritebackLines* writebacks,
                          CacheCntlr* cntlr) {
+
   assert(offset + bytes <= m_blocksize);
-  assert(wr_data != nullptr);
+  assert((wr_data != nullptr) || (wr_data == nullptr && bytes == 0));
 
   SuperblockInfo& superblock_info = m_superblock_info_ways[way];
   assert(superblock_info.isValid(block_id));
@@ -167,7 +169,7 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
                           CacheCntlr* cntlr) {
 
   assert(ins_block_info.get() != nullptr);
-  assert(ins_data != nullptr);
+  // assert(ins_data != nullptr);  // Possible to insert null lines (TLB)
   assert(writebacks != nullptr);
 
   /*

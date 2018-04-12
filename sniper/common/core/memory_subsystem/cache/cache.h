@@ -51,6 +51,7 @@ class Cache : public CacheBase {
   ~Cache();
 
   Lock& getSetLock(IntPtr addr);
+  UInt32 getSuperblockSize() { return SUPERBLOCK_SIZE; }
 
   bool invalidateSingleLine(IntPtr addr);
   CacheBlockInfo* accessSingleLine(IntPtr addr, access_t access_type,
@@ -76,6 +77,7 @@ class Cache : public CacheBase {
                     UInt32& block_id) const;
   void splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
                     UInt32& block_id, UInt32& offset) const;
+  IntPtr tagToAddress(IntPtr tag) const;
 
   // Update Cache Counters
   void updateCounters(bool cache_hit);

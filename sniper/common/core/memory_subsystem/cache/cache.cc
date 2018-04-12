@@ -81,7 +81,6 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
                                         bool update_replacement,
                                         WritebackLines* writebacks,
                                         CacheCntlr* cntlr) {
-  assert(writebacks != nullptr);
 
   IntPtr tag;
   UInt32 set_index;
@@ -110,6 +109,7 @@ void Cache::insertSingleLine(IntPtr addr, const Byte* ins_data,
                              SubsecondTime now, WritebackLines* writebacks,
                              CacheCntlr* cntlr) {
 
+  // TODO: TLB implementation uses Cache objects to store
   assert(ins_data != nullptr);
   assert(writebacks != nullptr);
 
@@ -195,6 +195,11 @@ void Cache::splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
       LOG_PRINT_ERROR("Invalid hash function %d", m_hash);
       assert(false);
   }
+}
+
+IntPtr Cache::tagToAddress(IntPtr tag) const {
+  UInt32 log2_blocksize = std::log2(m_blocksize);
+  return tag << log2_blocksize;
 }
 
 void Cache::updateCounters(bool cache_hit) {

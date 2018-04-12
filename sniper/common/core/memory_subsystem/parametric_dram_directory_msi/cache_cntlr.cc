@@ -7,7 +7,6 @@
 #include "config.hpp"
 #include "fault_injection.h"
 #include "hooks_manager.h"
-#include "cache_atd.h"
 #include "shmem_perf.h"
 
 #include <cstring>
@@ -94,31 +93,9 @@ CacheMasterCntlr::getSetLock(IntPtr addr)
    return &m_setlocks.at((addr >> m_log_blocksize) & (m_num_sets-1));
 }
 
-void
-CacheMasterCntlr::createATDs(String name, String configName, core_id_t master_core_id, UInt32 shared_cores, UInt32 size,
-   UInt32 associativity, UInt32 block_size, String replacement_policy, CacheBase::hash_t hash_function)
-{
-   // Instantiate an ATD for each sharing core
-   for(UInt32 core_id = master_core_id; core_id < master_core_id + shared_cores; ++core_id)
-   {
-      m_atds.push_back(new ATD(name + ".atd", configName, core_id, size, associativity, block_size, replacement_policy, hash_function));
-   }
-}
-
-void
-CacheMasterCntlr::accessATDs(Core::mem_op_t mem_op_type, bool hit, IntPtr address, UInt32 core_num)
-{
-   if (m_atds.size())
-      m_atds[core_num]->access(mem_op_type, hit, address);
-}
-
 CacheMasterCntlr::~CacheMasterCntlr()
 {
    delete m_cache;
-   for(std::vector<ATD*>::iterator it = m_atds.begin(); it != m_atds.end(); ++it)
-   {
-      delete *it;
-   }
 }
 
 CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
@@ -173,6 +150,7 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
             cache_params.num_sets,
             cache_params.associativity,
             m_cache_block_size,
+            cache_params.compressible,
             cache_params.replacement_policy,
             CacheBase::SHARED_CACHE,
             CacheBase::parseAddressHash(cache_params.hash_function),
@@ -180,19 +158,6 @@ CacheCntlr::CacheCntlr(MemComponent::component_t mem_component,
                ? Sim()->getFaultinjectionManager()->getFaultInjector(m_core_id_master, mem_component)
                : NULL);
       m_master->m_prefetcher = Prefetcher::createPrefetcher(cache_params.prefetcher, cache_params.configName, m_core_id, m_shared_cores);
-
-      if (Sim()->getCfg()->getBoolDefault("perf_model/" + cache_params.configName + "/atd/enabled", false))
-      {
-         m_master->createATDs(name,
-               "perf_model/" + cache_params.configName,
-               m_core_id,
-               m_shared_cores,
-               cache_params.num_sets,
-               cache_params.associativity,
-               m_cache_block_size,
-               cache_params.replacement_policy,
-               CacheBase::parseAddressHash(cache_params.hash_function));
-      }
 
       Sim()->getHooksManager()->registerHook(HookType::HOOK_ROI_END, __walkUsageBits, (UInt64)this, HooksManager::ORDER_NOTIFY_PRE);
    }
@@ -976,7 +941,7 @@ CacheCntlr::processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t m
                SubsecondTime latency;
 
                // Do the DRAM access and increment local time
-               boost::tie<HitWhere::where_t, SubsecondTime>(hit_where, latency) = accessDRAM(Core::READ, address, isPrefetch != Prefetch::NONE, data_buf);
+               std::tie<HitWhere::where_t, SubsecondTime>(hit_where, latency) = accessDRAM(Core::READ, address, isPrefetch != Prefetch::NONE, data_buf);
                getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
 
                // Insert the line. Be sure to use SHARED/MODIFIED as appropriate (upgrades are free anyway), we don't want to have to write back clean lines
@@ -1077,17 +1042,21 @@ CacheCntlr::walkUsageBits()
       {
          for(UInt32 way = 0; way < m_master->m_cache->getAssociativity(); ++way)
          {
-            CacheBlockInfo *block_info = m_master->m_cache->peekBlock(set_index, way);
-            if (block_info->isValid() && !block_info->hasOption(CacheBlockInfo::WARMUP))
-            {
-               Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_evict(true, block_info->getOwner(), 0, block_info->getUsage(), getCacheBlockSize() >> CacheBlockInfo::BitsUsedOffset);
-            }
+           for (UInt32 block_id = 0; block_id < m_master->m_cache->getSuperblockSize(); ++block_id)
+           {
+             CacheBlockInfo *block_info = m_master->m_cache->peekBlock(set_index, way, block_id);
+
+             if (block_info->isValid() && !block_info->hasOption(CacheBlockInfo::WARMUP))
+             {
+                Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_evict(true, block_info->getOwner(), 0, block_info->getUsage(), getCacheBlockSize() >> CacheBlockInfo::BitsUsedOffset);
+             }
+           }
          }
       }
    }
 }
 
-boost::tuple<HitWhere::where_t, SubsecondTime>
+std::pair<HitWhere::where_t, SubsecondTime>
 CacheCntlr::accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, Byte* data_buf)
 {
    ScopedLock sl(getLock()); // DRAM is shared and owned by m_master
@@ -1099,19 +1068,19 @@ CacheCntlr::accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefet
    switch (mem_op_type)
    {
       case Core::READ:
-         boost::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->getDataFromDram(address, m_core_id_master, data_buf, t_issue, m_shmem_perf);
+        std::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->getDataFromDram(address, m_core_id_master, t_issue, m_shmem_perf, data_buf);
          break;
 
       case Core::READ_EX:
       case Core::WRITE:
-         boost::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->putDataToDram(address, m_core_id_master, data_buf, t_issue);
+         std::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->putDataToDram(address, m_core_id_master, data_buf, t_issue);
          break;
 
       default:
          LOG_PRINT_ERROR("Unsupported Mem Op Type(%u)", mem_op_type);
    }
 
-   return boost::tuple<HitWhere::where_t, SubsecondTime>(hit_where, dram_latency);
+   return std::pair<HitWhere::where_t, SubsecondTime>(hit_where, dram_latency);
 }
 
 void
@@ -1478,7 +1447,7 @@ MYLOG("evicting @%lx", evict_address);
             // Access DRAM
             SubsecondTime dram_latency;
             HitWhere::where_t hit_where;
-            boost::tie<HitWhere::where_t, SubsecondTime>(hit_where, dram_latency) = accessDRAM(Core::WRITE, evict_address, false, evict_buf);
+            std::tie<HitWhere::where_t, SubsecondTime>(hit_where, dram_latency) = accessDRAM(Core::WRITE, evict_address, false, evict_buf);
 
             // Occupy evict buffer
             if (m_master->m_dram_outstanding_writebacks)
@@ -2053,10 +2022,6 @@ CacheCntlr::updateCounters(Core::mem_op_t mem_op_type, IntPtr address, bool cach
       of the previous miss was done instantaneously. But mshr[address] contains its completion time */
    SubsecondTime t_now = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
    bool overlapping = m_master->mshr.count(address) && m_master->mshr[address].t_issue < t_now && m_master->mshr[address].t_complete > t_now;
-
-   // ATD doesn't track state, so when reporting hit/miss to it we shouldn't either (i.e. write hit to shared line becomes hit, not miss)
-   bool cache_data_hit = (state != CacheState::INVALID);
-   m_master->accessATDs(mem_op_type, cache_data_hit, address, m_core_id - m_core_id_master);
 
    if (mem_op_type == Core::WRITE)
    {

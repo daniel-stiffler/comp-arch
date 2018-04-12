@@ -10,7 +10,6 @@
 class SuperblockInfo {
  private:
   std::array<CacheBlockInfoUPtr, SUPERBLOCK_SIZE> m_block_infos;
-  bool m_valid[4];
   IntPtr m_supertag;
 
  public:
@@ -20,18 +19,21 @@ class SuperblockInfo {
   CacheBlockInfo* peekBlock(UInt32 block_id) const {
     assert(block_id < SUPERBLOCK_SIZE);
 
-    if (m_valid[block_id])
-      return m_block_infos[block_id].get();
-    else
+    CacheBlockInfo* block_info = m_block_infos[block_id].get();
+
+    if (block_info->isValid()) {
+      return block_info;
+    } else {
       return nullptr;
+    }
   }
 
   bool canInsertBlockInfo(const CacheBlockInfo* ins_block_info,
                           UInt32* block_id) const;
 
   bool isValid() const {
-    for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-      if (m_valid[i]) return true;
+    for (const auto& e : m_block_infos) {
+      if (e->isValid()) return true;
     }
 
     return false;
@@ -39,7 +41,7 @@ class SuperblockInfo {
   bool isValid(UInt32 block_id) const {
     assert(block_id < SUPERBLOCK_SIZE);
 
-    return m_valid[block_id];
+    return m_block_infos[block_id]->isValid();
   }
 
   void swapBlockInfo(UInt32 block_id, CacheBlockInfoUPtr& inout_block_info);

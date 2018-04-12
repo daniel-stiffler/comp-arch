@@ -1,5 +1,7 @@
 #pragma once
 
+#include <utility>
+
 #include "core.h"
 #include "cache.h"
 #include "prefetcher.h"
@@ -17,10 +19,7 @@
 #include "stats.h"
 #include "subsecond_time.h"
 
-#include "boost/tuple/tuple.hpp"
-
 class DramCntlrInterface;
-class ATD;
 
 /* Enable to get a detailed count of state transitions */
 //#define ENABLE_TRANSITIONS
@@ -79,6 +78,7 @@ namespace ParametricDramDirectoryMSI
          UInt32 size;
          UInt32 num_sets;
          UInt32 associativity;
+         bool compressible;
          String hash_function;
          String replacement_policy;
          bool perfect;
@@ -99,14 +99,14 @@ namespace ParametricDramDirectoryMSI
             , writeback_time(NULL,0)
          {}
          CacheParameters(
-            String _configName, UInt32 _size, UInt32 _associativity, UInt32 block_size,
+            String _configName, UInt32 _size, UInt32 _associativity, UInt32 block_size, bool _compressible,
             String _hash_function, String _replacement_policy, bool _perfect, bool _coherent,
             const ComponentLatency& _data_access_time, const ComponentLatency& _tags_access_time,
             const ComponentLatency& _writeback_time, const ComponentBandwidthPerCycle& _next_level_read_bandwidth,
             String _perf_model_type, bool _writethrough, UInt32 _shared_cores,
             String _prefetcher, UInt32 _outstanding_misses)
          :
-            configName(_configName), size(_size), associativity(_associativity),
+            configName(_configName), size(_size), associativity(_associativity), compressible(_compressible),
             hash_function(_hash_function), replacement_policy(_replacement_policy), perfect(_perfect), coherent(_coherent),
             data_access_time(_data_access_time), tags_access_time(_tags_access_time),
             writeback_time(_writeback_time), next_level_read_bandwidth(_next_level_read_bandwidth),
@@ -163,8 +163,6 @@ namespace ParametricDramDirectoryMSI
          IntPtr m_evicting_address;
          Byte* m_evicting_buf;
 
-         std::vector<ATD*> m_atds;
-
          std::vector<SetLock> m_setlocks;
          UInt32 m_log_blocksize;
          UInt32 m_num_sets;
@@ -175,10 +173,6 @@ namespace ParametricDramDirectoryMSI
          void createSetLocks(UInt32 cache_block_size, UInt32 num_sets, UInt32 core_offset, UInt32 num_cores);
          SetLock* getSetLock(IntPtr addr);
 
-         void createATDs(String name, String configName, core_id_t core_id, UInt32 shared_cores, UInt32 size, UInt32 associativity, UInt32 block_size,
-            String replacement_policy, CacheBase::hash_t hash_function);
-         void accessATDs(Core::mem_op_t mem_op_type, bool hit, IntPtr address, UInt32 core_num);
-
          CacheMasterCntlr(String name, core_id_t core_id, UInt32 outstanding_misses)
             : m_cache(NULL)
             , m_prefetcher(NULL)
@@ -188,7 +182,6 @@ namespace ParametricDramDirectoryMSI
             , m_next_level_read_bandwidth(name + ".next_read", core_id)
             , m_evicting_address(0)
             , m_evicting_buf(NULL)
-            , m_atds()
             , m_prefetch_list()
             , m_prefetch_next(SubsecondTime::Zero())
          {}
@@ -305,7 +298,7 @@ namespace ParametricDramDirectoryMSI
          HitWhere::where_t processShmemReqFromPrevCache(CacheCntlr* requester, Core::mem_op_t mem_op_type, IntPtr address, bool modeled, bool count, Prefetch::prefetch_type_t isPrefetch, SubsecondTime t_issue, bool have_write_lock);
 
          // Process Request from L1 Cache
-         boost::tuple<HitWhere::where_t, SubsecondTime> accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, Byte* data_buf);
+         std::pair<HitWhere::where_t, SubsecondTime> accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, Byte* data_buf);
          void initiateDirectoryAccess(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, SubsecondTime t_issue);
          void processExReqToDirectory(IntPtr address);
          void processShReqToDirectory(IntPtr address);
