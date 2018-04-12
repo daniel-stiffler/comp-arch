@@ -1,8 +1,8 @@
 #include <cassert>
 
-#include "cache_base.h"
 #include "cache_set.h"
 #include "cache_set_lru.h"
+
 #include "config.h"
 #include "config.hpp"
 #include "log.h"
@@ -215,11 +215,13 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     if (superblock_info.isValid(i)) {
       std::unique_ptr<Byte> evict_block_data(new Byte[m_blocksize]);
+
       CacheBlockInfoUPtr evict_block_info = superblock_info.evictBlockInfo(i);
+      IntPtr evict_addr = tagToAddress(evict_block_info->getTag(), m_blocksize);
       super_data.evictBlockData(i, evict_block_data.get());
 
       // Allocate and construct a new WritebackTuple in the vector
-      writebacks->emplace_back(std::move(evict_block_info),
+      writebacks->emplace_back(evict_addr, std::move(evict_block_info),
                                std::move(evict_block_data));
     }
   }

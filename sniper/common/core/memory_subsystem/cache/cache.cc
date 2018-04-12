@@ -1,16 +1,19 @@
+#include <cmath>
 #include <utility>
 
+#include "address_home_lookup.h"
 #include "cache.h"
 #include "log.h"
+#include "rng.h"
 #include "simulator.h"
 
 // Cache class
 // constructors/destructors
 Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
-             UInt32 associativity, UInt32 cache_block_size, bool compressible,
+             UInt32 associativity, UInt32 blocksize, bool compressible,
              String replacement_policy, cache_t cache_type, hash_t hash,
              FaultInjector* fault_injector, AddressHomeLookup* ahl)
-    : CacheBase(name, num_sets, associativity, cache_block_size, hash, ahl),
+    : CacheBase(name, num_sets, associativity, blocksize, hash, ahl),
       m_enabled(false),
       m_compressible(compressible),
       m_num_accesses(0),
@@ -23,6 +26,7 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
                                    m_associativity, m_compressible));
 
   // Populate m_sets with newly-constructed objects
+  m_sets.reserve(m_num_sets);
   for (UInt32 i = 0; i < m_num_sets; i++) {
     // CacheSet::createCacheSet is a factory function for CacheSet objects, so
     // use move semantics to push the unique pointers into the vector
@@ -75,12 +79,9 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
                                         Byte* acc_data, UInt32 bytes,
                                         SubsecondTime now,
                                         bool update_replacement,
-                                        std::vector<IntPtr>* writeback_addrs,
                                         WritebackLines* writebacks,
                                         CacheCntlr* cntlr) {
-  assert(writeback_addrs != nullptr);
   assert(writebacks != nullptr);
-  UInt32 prior_writebacks = writebacks->size();
 
   IntPtr tag;
   UInt32 set_index;
@@ -90,7 +91,7 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
 
   splitAddress(addr, tag, set_index, block_id, offset);
 
-  CacheSet* set                    = m_sets[set_index].get();
+  CacheSet* set              = m_sets[set_index].get();
   CacheBlockInfo* block_info = set->find(tag, &way, &block_id);
 
   if (block_info == nullptr) return nullptr;
@@ -101,23 +102,15 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
     set->writeLine(way, block_id, offset, acc_data, bytes, update_replacement,
                    writebacks, cntlr);
   }
-  for (UInt32 i = prior_writebacks; i < writebacks->size(); ++i) {
-    const WritebackTuple& tmp_tuple            = (*writebacks)[i];
-    const CacheBlockInfo* tmp_block_info = std::get<0>(tmp_tuple).get();
-    IntPtr addr = tagToAddress(tmp_block_info->getTag());
-    
-    writeback_addrs->push_back(addr);
-  }
 
   return block_info;
 }
 
-void Cache::insertSingleLine(IntPtr addr, Byte* ins_data, SubsecondTime now,
-                             std::vector<IntPtr>* writeback_addrs,
-                             WritebackLines* writebacks, CacheCntlr* cntlr) {
+void Cache::insertSingleLine(IntPtr addr, const Byte* ins_data,
+                             SubsecondTime now, WritebackLines* writebacks,
+                             CacheCntlr* cntlr) {
 
   assert(ins_data != nullptr);
-  assert(writeback_addrs != nullptr);
   assert(writebacks != nullptr);
 
   IntPtr tag;
@@ -129,25 +122,8 @@ void Cache::insertSingleLine(IntPtr addr, Byte* ins_data, SubsecondTime now,
       std::move(CacheBlockInfo::create(m_cache_type));
   block_info->setTag(tag);
 
-  // Record the number of writebacks prior to performing the insertion, so that
-  // we can iterate through the results and pick out their addresses
-  UInt32 prior_writebacks = writebacks->size();
-
   CacheSet* set = m_sets[set_index].get();
   set->insertLine(std::move(block_info), ins_data, writebacks, cntlr);
-
-  // Iterate through the new additions to the writebacks vector and add each of
-  // their addresses to the eviction queue.
-  //
-  // The tags consist of the upper address bits, minus the block offset, so it
-  // already includes the set index etc.
-  for (UInt32 i = prior_writebacks; i < writebacks->size(); ++i) {
-    const WritebackTuple& tmp_tuple            = (*writebacks)[i];
-    const CacheBlockInfo* tmp_block_info = std::get<0>(tmp_tuple).get();
-    IntPtr addr = tagToAddress(tmp_block_info->getTag());
-
-    writeback_addrs->push_back(addr);
-  }
 
 #ifdef ENABLE_SET_USAGE_HIST
   ++m_set_usage_hist[set_index];
@@ -160,6 +136,65 @@ CacheBlockInfo* Cache::peekSingleLine(IntPtr addr) {
   splitAddress(addr, tag, set_index);
 
   return m_sets[set_index]->find(tag);
+}
+
+void Cache::splitAddress(const IntPtr addr, IntPtr& tag) const {
+  UInt32 tmp_set_index;
+  UInt32 tmp_block_id;
+  UInt32 tmp_offset;
+
+  splitAddress(addr, tag, tmp_set_index, tmp_block_id, tmp_offset);
+}
+void Cache::splitAddress(const IntPtr addr, IntPtr& tag,
+                         UInt32& set_index) const {
+
+  UInt32 tmp_block_id;
+  UInt32 tmp_offset;
+
+  splitAddress(addr, tag, set_index, tmp_block_id, tmp_offset);
+}
+void Cache::splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
+                         UInt32& block_id) const {
+  UInt32 tmp_offset;
+
+  splitAddress(addr, tag, set_index, block_id, tmp_offset);
+}
+void Cache::splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
+                         UInt32& block_id, UInt32& offset) const {
+
+  UInt32 log2_blocksize = std::log2(m_blocksize);
+
+  tag    = addr >> log2_blocksize;
+  offset = addr & (m_blocksize - 1);
+
+  IntPtr linear_addr    = m_ahl ? m_ahl->getLinearAddress(addr) : addr;
+  IntPtr superblock_num = linear_addr >> log2_blocksize;
+  IntPtr block_num      = superblock_num >> SUPERBLOCK_SIZE;
+
+  block_id = block_num & (SUPERBLOCK_SIZE - 1);  // Superblocks are consecutive
+
+  switch (m_hash) {
+    case CacheBase::HASH_MASK:
+      set_index = block_num & (m_num_sets - 1);
+      break;
+    case CacheBase::HASH_MOD:
+      set_index = block_num % m_num_sets;
+      break;
+    case CacheBase::HASH_RNG1_MOD: {
+      UInt64 state = rng_seed(block_num);
+      set_index    = rng_next(state) % m_num_sets;
+      break;
+    }
+    case CacheBase::HASH_RNG2_MOD: {
+      UInt64 state = rng_seed(block_num);
+      rng_next(state);
+      set_index = rng_next(state) % m_num_sets;
+      break;
+    }
+    default:
+      LOG_PRINT_ERROR("Invalid hash function %d", m_hash);
+      assert(false);
+  }
 }
 
 void Cache::updateCounters(bool cache_hit) {

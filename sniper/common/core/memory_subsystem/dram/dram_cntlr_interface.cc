@@ -19,7 +19,7 @@ void DramCntlrInterface::handleMsgFromTagDirectory(core_id_t sender, PrL1PrL2Dra
          SubsecondTime dram_latency;
          HitWhere::where_t hit_where;
 
-         boost::tie(dram_latency, hit_where) = getDataFromDram(address, shmem_msg->getRequester(), data_buf, msg_time, shmem_msg->getPerf());
+         std::tie(dram_latency, hit_where) = getDataFromDram(address, shmem_msg->getRequester(), msg_time, shmem_msg->getPerf(), data_buf);
 
          getShmemPerfModel()->incrElapsedTime(dram_latency, ShmemPerfModel::_SIM_THREAD);
 

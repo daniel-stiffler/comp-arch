@@ -7,6 +7,8 @@
 
 #include "cache_set.h"
 
+#include "log.h"
+
 class CacheSetInfoLRU : public CacheSetInfo {
  public:
   CacheSetInfoLRU(String name, String cfgname, core_id_t core_id,

@@ -48,8 +48,8 @@ DramCntlr::~DramCntlr()
    delete m_dram_perf_model;
 }
 
-boost::tuple<SubsecondTime, HitWhere::where_t>
-DramCntlr::getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf)
+std::pair<SubsecondTime, HitWhere::where_t>
+DramCntlr::getDataFromDram(IntPtr address, core_id_t requester, SubsecondTime now, ShmemPerf *perf, Byte* data_buf)
 {
    if (Sim()->getFaultinjectionManager())
    {
@@ -74,10 +74,10 @@ DramCntlr::getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, 
    #endif
    MYLOG("R @ %08lx latency %s", address, itostr(dram_access_latency).c_str());
 
-   return boost::tuple<SubsecondTime, HitWhere::where_t>(dram_access_latency, HitWhere::DRAM);
+   return std::pair<SubsecondTime, HitWhere::where_t>(dram_access_latency, HitWhere::DRAM);
 }
 
-boost::tuple<SubsecondTime, HitWhere::where_t>
+std::pair<SubsecondTime, HitWhere::where_t>
 DramCntlr::putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now)
 {
    if (Sim()->getFaultinjectionManager())
@@ -101,7 +101,7 @@ DramCntlr::putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, Su
    #endif
    MYLOG("W @ %08lx", address);
 
-   return boost::tuple<SubsecondTime, HitWhere::where_t>(dram_access_latency, HitWhere::DRAM);
+   return std::pair<SubsecondTime, HitWhere::where_t>(dram_access_latency, HitWhere::DRAM);
 }
 
 SubsecondTime

@@ -43,7 +43,7 @@ class Cache : public CacheBase {
   // The Cache object can be configured to use DISH dictionary compression, or
   // manage lines normally.
   Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
-        UInt32 associativity, UInt32 cache_block_size, bool compressible,
+        UInt32 associativity, UInt32 blocksize, bool compressible,
         String replacement_policy, cache_t cache_type,
         hash_t hash                   = CacheBase::HASH_MASK,
         FaultInjector* fault_injector = nullptr,
@@ -56,11 +56,9 @@ class Cache : public CacheBase {
   CacheBlockInfo* accessSingleLine(IntPtr addr, access_t access_type,
                                    Byte* acc_data, UInt32 bytes,
                                    SubsecondTime now, bool update_replacement,
-                                   std::vector<IntPtr>* writeback_addrs,
-                                   WritebackLines* writebacks,
-                                   CacheCntlr* cntlr = nullptr);
-  void insertSingleLine(IntPtr addr, Byte* ins_data, SubsecondTime now,
-                        std::vector<IntPtr>* writeback_addrs,
+                                   WritebackLines* writebacks = nullptr,
+                                   CacheCntlr* cntlr          = nullptr);
+  void insertSingleLine(IntPtr addr, const Byte* ins_data, SubsecondTime now,
                         WritebackLines* writebacks,
                         CacheCntlr* cntlr = nullptr);
   CacheBlockInfo* peekSingleLine(IntPtr addr);
@@ -78,7 +76,6 @@ class Cache : public CacheBase {
                     UInt32& block_id) const;
   void splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
                     UInt32& block_id, UInt32& offset) const;
-  IntPtr tagToAddress(const IntPtr tag);
 
   // Update Cache Counters
   void updateCounters(bool cache_hit);

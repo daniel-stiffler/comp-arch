@@ -1,12 +1,12 @@
 #ifndef __NUCA_CACHE_H
 #define __NUCA_CACHE_H
 
-#include "fixed_types.h"
-#include "subsecond_time.h"
-#include "hit_where.h"
-#include "cache_cntlr.h"
+#include <utility>
 
-#include "boost/tuple/tuple.hpp"
+#include "cache_cntlr.h"
+#include "fixed_types.h"
+#include "hit_where.h"
+#include "subsecond_time.h"
 
 class MemoryManagerBase;
 class ShmemPerfModel;
@@ -14,31 +14,39 @@ class AddressHomeLookup;
 class QueueModel;
 class ShmemPerf;
 
-class NucaCache
-{
-   private:
-      core_id_t m_core_id;
-      MemoryManagerBase *m_memory_manager;
-      ShmemPerfModel *m_shmem_perf_model;
-      AddressHomeLookup *m_home_lookup;
-      UInt32 m_cache_block_size;
-      ComponentLatency m_data_access_time;
-      ComponentLatency m_tags_access_time;
-      ComponentBandwidth m_data_array_bandwidth;
+class NucaCache {
+ private:
+  core_id_t m_core_id;
+  MemoryManagerBase* m_memory_manager;
+  ShmemPerfModel* m_shmem_perf_model;
+  AddressHomeLookup* m_home_lookup;
+  UInt32 m_cache_block_size;
+  ComponentLatency m_data_access_time;
+  ComponentLatency m_tags_access_time;
+  ComponentBandwidth m_data_array_bandwidth;
 
-      Cache* m_cache;
-      QueueModel *m_queue_model;
+  Cache* m_cache;
+  QueueModel* m_queue_model;
 
-      UInt64 m_reads, m_writes, m_read_misses, m_write_misses;
+  UInt64 m_reads, m_writes, m_read_misses, m_write_misses;
 
-      SubsecondTime accessDataArray(Cache::access_t access, SubsecondTime t_start, ShmemPerf *perf);
+  SubsecondTime accessDataArray(Cache::access_t access, SubsecondTime t_start,
+                                ShmemPerf* perf);
 
-   public:
-      NucaCache(MemoryManagerBase* memory_manager, ShmemPerfModel* shmem_perf_model, AddressHomeLookup* home_lookup, UInt32 cache_block_size, bool compressed, ParametricDramDirectoryMSI::CacheParameters& parameters);
-      ~NucaCache();
+ public:
+  NucaCache(MemoryManagerBase* memory_manager, ShmemPerfModel* shmem_perf_model,
+            AddressHomeLookup* home_lookup, UInt32 cache_block_size,
+            bool compressed,
+            ParametricDramDirectoryMSI::CacheParameters& parameters);
+  ~NucaCache();
 
-      boost::tuple<SubsecondTime, HitWhere::where_t> read(IntPtr address, Byte* data_buf, SubsecondTime now, ShmemPerf *perf, bool count);
-      boost::tuple<SubsecondTime, HitWhere::where_t> write(IntPtr address, Byte* data_buf, SubsecondTime now, bool count, std::vector<IntPtr>* eviction_addrs, WritebackLines* evictions);
+  std::pair<SubsecondTime, HitWhere::where_t> read(IntPtr address,
+                                                   Byte* data_buf,
+                                                   SubsecondTime now,
+                                                   ShmemPerf* perf, bool count);
+  std::pair<SubsecondTime, HitWhere::where_t> write(
+      IntPtr address, Byte* data_buf, SubsecondTime now, bool count,
+      std::vector<IntPtr>* eviction_addrs, WritebackLines* evictions);
 };
 
-#endif // __NUCA_CACHE_H
+#endif  // __NUCA_CACHE_H

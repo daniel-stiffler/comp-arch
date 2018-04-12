@@ -11,7 +11,6 @@
 #include "compress_utils.h"
 #include "fixed_types.h"
 #include "lock.h"
-#include "log.h"
 #include "superblock_info.h"
 
 // Per-cache object to store replacement-policy related info (e.g. statistics),

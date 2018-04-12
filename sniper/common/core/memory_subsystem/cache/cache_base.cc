@@ -5,13 +5,13 @@
 #include "address_home_lookup.h"
 
 CacheBase::CacheBase(
-   String name, UInt32 num_sets, UInt32 associativity, UInt32 cache_block_size,
+   String name, UInt32 num_sets, UInt32 associativity, UInt32 blocksize,
    CacheBase::hash_t hash, AddressHomeLookup *ahl)
 :
    m_name(name),
-   m_cache_size(UInt64(num_sets) * associativity * cache_block_size),
+   m_cache_size(UInt64(num_sets) * associativity * blocksize),
    m_associativity(associativity),
-   m_blocksize(cache_block_size),
+   m_blocksize(blocksize),
    m_hash(hash),
    m_num_sets(num_sets),
    m_ahl(ahl)
@@ -81,10 +81,4 @@ CacheBase::splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
 {
    block_offset = addr & (m_blocksize-1);
    splitAddress(addr, tag, set_index);
-}
-
-IntPtr
-CacheBase::tagToAddress(const IntPtr tag)
-{
-   return tag << m_log_blocksize;
 }

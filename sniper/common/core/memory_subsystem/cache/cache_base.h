@@ -75,13 +75,13 @@ class CacheBase
 
    public:
       // constructors/destructors
-      CacheBase(String name, UInt32 num_sets, UInt32 associativity, UInt32 cache_block_size, CacheBase::hash_t hash, AddressHomeLookup *ahl = NULL);
+      CacheBase(String name, UInt32 num_sets, UInt32 associativity, UInt32 blocksize, CacheBase::hash_t hash, AddressHomeLookup *ahl = NULL);
       virtual ~CacheBase();
 
-      // utilities
+      // Utilities
       void splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index) const;
       void splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index, UInt32& block_offset) const;
-      IntPtr tagToAddress(const IntPtr tag);
+
       String getName(void) { return m_name; }
 
       UInt32 getNumSets() const { return m_num_sets; }

@@ -1,6 +1,7 @@
 #ifndef __DISH_UTILS_H__
 #define __DISH_UTILS_H__
 
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -23,7 +24,13 @@ enum class scheme_t { UNCOMPRESSED, SCHEME1, SCHEME2 };
 }  // namespace DISH
 
 typedef std::unique_ptr<CacheBlockInfo> CacheBlockInfoUPtr;
-typedef std::tuple<CacheBlockInfoUPtr, std::unique_ptr<Byte>> WritebackTuple;
+typedef std::tuple<IntPtr, CacheBlockInfoUPtr, std::unique_ptr<Byte>>
+    WritebackTuple;
 typedef std::vector<WritebackTuple> WritebackLines;
+
+IntPtr tagToAddress(IntPtr tag, UInt32 blocksize) {
+  UInt32 log2_blocksize = std::log2(blocksize);
+  return tag << log2_blocksize;
+}
 
 #endif /* __DISH_UTILS_H__ */
