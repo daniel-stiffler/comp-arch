@@ -1,5 +1,4 @@
-#ifndef __CACHE_SET_LRU_H__
-#define __CACHE_SET_LRU_H__
+#pragma once
 
 #include <cassert>
 #include <list>
@@ -41,8 +40,8 @@ class CacheSetInfoLRU : public CacheSetInfo {
 class CacheSetLRU : public CacheSet {
  public:
   CacheSetLRU(CacheBase::cache_t cache_type, UInt32 associativity,
-              UInt32 blocksize, bool compressible, CacheSetInfoLRU* set_info,
-              UInt8 num_attempts);
+              UInt32 blocksize, bool compressible, const Cache* parent_cache,
+              CacheSetInfoLRU* set_info, UInt8 num_attempts);
   virtual ~CacheSetLRU();
 
   virtual UInt32 getReplacementWay(CacheCntlr* cntlr);
@@ -60,5 +59,3 @@ class CacheSetLRU : public CacheSet {
 
   void moveToMRU(UInt32 accessed_way);
 };
-
-#endif /* __CACHE_SET_LRU_H__ */

@@ -1,5 +1,4 @@
-#ifndef __PR_L1_CACHE_BLOCK_INFO_H__
-#define __PR_L1_CACHE_BLOCK_INFO_H__
+#pragma once
 
 #include "cache_state.h"
 #include "cache_block_info.h"
@@ -14,4 +13,3 @@ class PrL1CacheBlockInfo : public CacheBlockInfo
 
       ~PrL1CacheBlockInfo() {}
 };
-#endif /* __PR_L1_CACHE_BLOCK_INFO_H__ */

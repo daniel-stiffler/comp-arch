@@ -1,7 +1,6 @@
 #include "core_manager.h"
 #include "memory_manager.h"
 #include "cache_base.h"
-#include "nuca_cache.h"
 #include "dram_cache.h"
 #include "tlb.h"
 #include "simulator.h"
@@ -33,7 +32,6 @@ std::map<CoreComponentType, CacheCntlr*> MemoryManager::m_all_cache_cntlrs;
 MemoryManager::MemoryManager(Core* core,
       Network* network, ShmemPerfModel* shmem_perf_model):
    MemoryManagerBase(core, network, shmem_perf_model),
-   m_nuca_cache(NULL),
    m_dram_cache(NULL),
    m_dram_directory_cntlr(NULL),
    m_dram_cntlr(NULL),
@@ -47,9 +45,6 @@ MemoryManager::MemoryManager(Core* core,
    // Read Parameters from the Config file
    std::map<MemComponent::component_t, CacheParameters> cache_parameters;
    std::map<MemComponent::component_t, String> cache_names;
-
-   bool nuca_enable = false;
-   CacheParameters nuca_parameters;
 
    const ComponentPeriod *global_domain = Sim()->getDvfsManager()->getGlobalDomain();
 
@@ -150,24 +145,6 @@ MemoryManager::MemoryManager(Core* core,
             cache_parameters[(MemComponent::component_t)i].shared_cores = 1;
       }
 
-      nuca_enable = Sim()->getCfg()->getBoolArray(  "perf_model/nuca/enabled", core->getId());
-      if (nuca_enable)
-      {
-         nuca_parameters = CacheParameters(
-            "nuca",
-            Sim()->getCfg()->getIntArray(   "perf_model/nuca/cache_size", core->getId()),
-            Sim()->getCfg()->getIntArray(   "perf_model/nuca/associativity", core->getId()),
-            getCacheBlockSize(),
-            Sim()->getCfg()->getIntArray(   "perf_model/nuca/compressible", core->getId()),
-            Sim()->getCfg()->getStringArray("perf_model/nuca/address_hash", core->getId()),
-            Sim()->getCfg()->getStringArray("perf_model/nuca/replacement_policy", core->getId()),
-            false, true,
-            ComponentLatency(global_domain, Sim()->getCfg()->getIntArray("perf_model/nuca/data_access_time", core->getId())),
-            ComponentLatency(global_domain, Sim()->getCfg()->getIntArray("perf_model/nuca/tags_access_time", core->getId())),
-            ComponentLatency(global_domain, 0), ComponentBandwidthPerCycle(global_domain, 0), "", false, 0, "", 0 // unused
-         );
-      }
-
       // Dram Directory Cache
       dram_directory_total_entries = Sim()->getCfg()->getInt("perf_model/dram_directory/total_entries");
       dram_directory_associativity = Sim()->getCfg()->getInt("perf_model/dram_directory/associativity");
@@ -249,21 +226,9 @@ MemoryManager::MemoryManager(Core* core,
 
       if (!dram_direct_access)
       {
-         if (nuca_enable)
-         {
-            m_nuca_cache = new NucaCache(
-               this,
-               getShmemPerfModel(),
-               m_tag_directory_home_lookup,
-               getCacheBlockSize(), false, // don't support nuca cache compression (yet)
-               nuca_parameters);
-            Sim()->getStatsManager()->logTopology("nuca-cache", core->getId(), core->getId());
-         }
-
          m_dram_directory_cntlr = new PrL1PrL2DramDirectoryMSI::DramDirectoryCntlr(getCore()->getId(),
                this,
                m_dram_controller_home_lookup,
-               m_nuca_cache,
                dram_directory_total_entries,
                dram_directory_associativity,
                getCacheBlockSize(),
@@ -406,8 +371,6 @@ MemoryManager::~MemoryManager()
       m_cache_cntlrs[(MemComponent::component_t)i] = NULL;
    }
 
-   if (m_nuca_cache)
-      delete m_nuca_cache;
    if (m_dram_cache)
       delete m_dram_cache;
    if (m_dram_cntlr)

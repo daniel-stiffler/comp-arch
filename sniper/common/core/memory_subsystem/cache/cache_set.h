@@ -1,5 +1,4 @@
-#ifndef __CACHE_SET_H__
-#define __CACHE_SET_H__
+#pragma once
 
 #include <cstring>
 #include <memory>
@@ -12,6 +11,8 @@
 #include "fixed_types.h"
 #include "lock.h"
 #include "superblock_info.h"
+
+class Cache;  // Forward declaration
 
 // Per-cache object to store replacement-policy related info (e.g. statistics),
 // collect data from all CacheSet* objects (per set) and implement the actual
@@ -28,7 +29,8 @@ class CacheSet {
   static std::unique_ptr<CacheSet> createCacheSet(
       String cfgname, core_id_t core_id, String replacement_policy,
       CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
-      bool compressible, CacheSetInfo* set_info = nullptr);
+      bool compressible, const Cache* parent_cache,
+      CacheSetInfo* set_info = nullptr);
 
   // Factory method used to create the CacheSetInfo specialized subclasses
   static std::unique_ptr<CacheSetInfo> createCacheSetInfo(
@@ -47,9 +49,11 @@ class CacheSet {
   std::vector<SuperblockInfo> m_superblock_info_ways;
   std::vector<BlockData> m_data_ways;
 
+  const Cache* m_parent_cache;  // Used for address translation
+
  public:
   CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
-           UInt32 blocksize, bool compressable);
+           UInt32 blocksize, bool compressible, const Cache* parent_cache);
   virtual ~CacheSet();
 
   UInt32 getAssociativity() { return m_associativity; }
@@ -62,8 +66,8 @@ class CacheSet {
   void writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
                  const Byte* wr_buff, UInt32 bytes, bool update_replacement,
                  WritebackLines* writebacks, CacheCntlr* cntlr = nullptr);
-  CacheBlockInfo* find(IntPtr tag, UInt32* way = nullptr,
-                       UInt32* block_id = nullptr);
+  CacheBlockInfo* find(IntPtr tag, UInt32 block_id,
+                       UInt32* way = nullptr) const;
   bool invalidate(IntPtr tag);
   void insertLine(CacheBlockInfoUPtr ins_block_info, const Byte* ins_data,
                   WritebackLines* writebacks, CacheCntlr* cntlr = nullptr);
@@ -81,5 +85,3 @@ class CacheSet {
 
   bool isValidReplacement(UInt32 way);
 };
-
-#endif /* __CACHE_SET_H__ */

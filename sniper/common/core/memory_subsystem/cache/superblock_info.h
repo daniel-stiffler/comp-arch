@@ -1,5 +1,4 @@
-#ifndef __SUPERBLOCK_INFO_H__
-#define __SUPERBLOCK_INFO_H__
+#pragma once
 
 #include <array>
 #include <cassert>
@@ -13,7 +12,7 @@ class SuperblockInfo {
   IntPtr m_supertag;
 
  public:
-  SuperblockInfo(IntPtr supertag = TAG_UNUSED);
+  SuperblockInfo();
   virtual ~SuperblockInfo();
 
   CacheBlockInfo* peekBlock(UInt32 block_id) const {
@@ -28,8 +27,8 @@ class SuperblockInfo {
     }
   }
 
-  bool canInsertBlockInfo(const CacheBlockInfo* ins_block_info,
-                          UInt32* block_id) const;
+  bool canInsertBlockInfo(IntPtr supertag, UInt32 block_id,
+                          const CacheBlockInfo* ins_block_info) const;
 
   bool isValid() const {
     for (const auto& e : m_block_infos) {
@@ -46,12 +45,11 @@ class SuperblockInfo {
 
   void swapBlockInfo(UInt32 block_id, CacheBlockInfoUPtr& inout_block_info);
   CacheBlockInfoUPtr evictBlockInfo(UInt32 block_id);
-  void insertBlockInfo(UInt32 block_id, CacheBlockInfoUPtr ins_block_info);
+  void insertBlockInfo(IntPtr supertag, UInt32 block_id,
+                       CacheBlockInfoUPtr ins_block_info);
 
   bool compareTags(UInt32 tag, UInt32* block_id = nullptr) const;
 
   bool isValidReplacement() const;
   bool invalidate(UInt32 tag);
 };
-
-#endif /* __SUPERBLOCK_INFO_H__ */

@@ -11,8 +11,6 @@
 #include "memory_manager_base.h"
 #include "coherency_protocol.h"
 
-class NucaCache;
-
 namespace PrL1PrL2DramDirectoryMSI
 {
    class DramDirectoryCntlr
@@ -23,8 +21,6 @@ namespace PrL1PrL2DramDirectoryMSI
          AddressHomeLookup* m_dram_controller_home_lookup;
          DramDirectoryCache* m_dram_directory_cache;
          ReqQueueList* m_dram_directory_req_queue_list;
-
-         NucaCache* m_nuca_cache;
 
          core_id_t m_core_id;
          UInt32 m_cache_block_size;
@@ -55,7 +51,6 @@ namespace PrL1PrL2DramDirectoryMSI
          void processInvRepFromL2Cache(core_id_t sender, ShmemMsg* shmem_msg);
          void processFlushRepFromL2Cache(core_id_t sender, ShmemMsg* shmem_msg);
          void processWbRepFromL2Cache(core_id_t sender, ShmemMsg* shmem_msg);
-         void sendDataToNUCA(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, bool count);
          void sendDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now);
 
          void updateShmemPerf(ShmemReq *shmem_req, ShmemPerf::shmem_times_type_t reason = ShmemPerf::UNKNOWN)
@@ -71,7 +66,6 @@ namespace PrL1PrL2DramDirectoryMSI
          DramDirectoryCntlr(core_id_t core_id,
                MemoryManagerBase* memory_manager,
                AddressHomeLookup* dram_controller_home_lookup,
-               NucaCache* nuca_cache,
                UInt32 dram_directory_total_entries,
                UInt32 dram_directory_associativity,
                UInt32 cache_block_size,

@@ -1,5 +1,4 @@
-#ifndef CACHE_STATE_H
-#define CACHE_STATE_H
+#pragma once
 
 #include <cassert>
 
@@ -42,5 +41,3 @@ class CacheState
       cstate_t cstate;
 
 };
-
-#endif /* CACHE_STATE_H */

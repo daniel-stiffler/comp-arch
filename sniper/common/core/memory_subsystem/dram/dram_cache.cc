@@ -226,7 +226,7 @@ void DramCache::putDataToCache(Cache::access_t access_type, IntPtr addr,
   accessDataArray(Cache::STORE, requester, now, nullptr);
 
   // Writeback to DRAM done off-line, so don't affect return latency
-  if (writebacks.size() > 0) {
+  if (!writebacks.empty()) {
     for (const auto& wb : writebacks) {
 
       IntPtr evict_addr                      = std::get<0>(wb);

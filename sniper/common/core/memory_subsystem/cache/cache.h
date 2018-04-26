@@ -16,7 +16,6 @@
 #include "shmem_perf_model.h"
 #include "utils.h"
 
-// Define to enable the set usage histogram
 //#define ENABLE_SET_USAGE_HIST
 
 class Cache : public CacheBase {
@@ -51,7 +50,8 @@ class Cache : public CacheBase {
   ~Cache();
 
   Lock& getSetLock(IntPtr addr);
-  UInt32 getSuperblockSize() { return SUPERBLOCK_SIZE; }
+  bool isCompressible();
+  UInt32 getSuperblockSize();
 
   bool invalidateSingleLine(IntPtr addr);
   CacheBlockInfo* accessSingleLine(IntPtr addr, access_t access_type,
@@ -65,31 +65,20 @@ class Cache : public CacheBase {
   CacheBlockInfo* peekSingleLine(IntPtr addr);
 
   CacheBlockInfo* peekBlock(UInt32 set_index, UInt32 way,
-                            UInt32 block_id) const {
-
-    return m_sets[set_index]->peekBlock(way, block_id);
-  }
+                            UInt32 block_id) const;
 
   // Address parsing utilities
-  void splitAddress(const IntPtr addr, IntPtr& tag) const;
-  void splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index) const;
-  void splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
-                    UInt32& block_id) const;
-  void splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
-                    UInt32& block_id, UInt32& offset) const;
+  void splitAddress(IntPtr addr, IntPtr* tag = nullptr,
+                    IntPtr* supertag = nullptr, UInt32* set_index = nullptr,
+                    UInt32* block_id = nullptr, UInt32* offset = nullptr) const;
   IntPtr tagToAddress(IntPtr tag) const;
 
   // Update Cache Counters
   void updateCounters(bool cache_hit);
   void updateHits(Core::mem_op_t mem_op_type, UInt64 hits);
 
-  void enable() { m_enabled = true; }
-  void disable() { m_enabled = false; }
+  void enable();
+  void disable();
 };
-
-template <class T>
-UInt32 moduloHashFn(T key, UInt32 hash_fn_param, UInt32 num_buckets) {
-  return (key >> hash_fn_param) % num_buckets;
-}
 
 #endif /* __CACHE_H__ */

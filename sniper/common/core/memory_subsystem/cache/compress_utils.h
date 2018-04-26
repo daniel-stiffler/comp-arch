@@ -1,5 +1,4 @@
-#ifndef __DISH_UTILS_H__
-#define __DISH_UTILS_H__
+#pragma once
 
 #include <cmath>
 #include <memory>
@@ -27,10 +26,3 @@ typedef std::unique_ptr<CacheBlockInfo> CacheBlockInfoUPtr;
 typedef std::tuple<IntPtr, CacheBlockInfoUPtr, std::unique_ptr<Byte>>
     WritebackTuple;
 typedef std::vector<WritebackTuple> WritebackLines;
-
-IntPtr tagToAddress(IntPtr tag, UInt32 blocksize) {
-  UInt32 log2_blocksize = std::log2(blocksize);
-  return tag << log2_blocksize;
-}
-
-#endif /* __DISH_UTILS_H__ */

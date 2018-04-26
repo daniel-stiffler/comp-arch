@@ -1,5 +1,4 @@
-#ifndef __GHB_PREFETCHER_H
-#define __GHB_PREFETCHER_H
+#pragma once
 
 #include "prefetcher.h"
 
@@ -46,5 +45,3 @@ class GhbPrefetcher : public Prefetcher
       UInt32 m_tableHead; //next table position to be overwritten (in lack of a better replacement policy at the moment)
       std::vector<TableEntry> m_ghbTable;
 };
-
-#endif // __GHB_PREFETCHER_H

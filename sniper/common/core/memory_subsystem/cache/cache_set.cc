@@ -1,5 +1,6 @@
 #include <cassert>
 
+#include "cache.h"  // Forward declared the class
 #include "cache_set.h"
 #include "cache_set_lru.h"
 
@@ -11,7 +12,7 @@
 std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     String cfgname, core_id_t core_id, String replacement_policy,
     CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
-    bool compressed, CacheSetInfo* set_info) {
+    bool compressible, const Cache* parent_cache, CacheSetInfo* set_info) {
 
   CacheBase::ReplacementPolicy policy = parsePolicyType(replacement_policy);
 
@@ -19,10 +20,10 @@ std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     case CacheBase::LRU:
     // Fall through
     case CacheBase::LRU_QBS: {
-      CacheSet* tmp =
-          new CacheSetLRU(cache_type, associativity, blocksize, compressed,
-                          dynamic_cast<CacheSetInfoLRU*>(set_info),
-                          getNumQBSAttempts(policy, cfgname, core_id));
+      CacheSet* tmp = new CacheSetLRU(
+          cache_type, associativity, blocksize, compressible, parent_cache,
+          dynamic_cast<CacheSetInfoLRU*>(set_info),
+          getNumQBSAttempts(policy, cfgname, core_id));
 
       return std::unique_ptr<CacheSet>(tmp);
     } break;  // Not necessary
@@ -59,11 +60,13 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
 }
 
 CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
-                   UInt32 blocksize, bool compressible)
+                   UInt32 blocksize, bool compressible,
+                   const Cache* parent_cache)
     : m_associativity(associativity),
       m_blocksize(blocksize),
       m_compressible(compressible),
-      m_superblock_info_ways(associativity) {
+      m_superblock_info_ways(associativity),
+      m_parent_cache(parent_cache) {
 
   for (auto& superblock_info : m_superblock_info_ways) {
     for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
@@ -140,14 +143,18 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
   }
 }
 
-CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32* way, UInt32* block_id) {
+CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32 block_id, UInt32* way) const {
   for (UInt32 tmp_way = 0; tmp_way < m_associativity; ++tmp_way) {
     const SuperblockInfo& superblock_info = m_superblock_info_ways[tmp_way];
 
     UInt32 tmp_block_id;
     if (superblock_info.compareTags(tag, &tmp_block_id)) {
-      if (block_id != nullptr) *block_id = tmp_block_id;
-      if (way != nullptr) *way           = tmp_way;
+      LOG_ASSERT_ERROR(block_id == tmp_block_id,
+                       "Found a matching block (tag:%lx, id:%d) at the wrong "
+                       "block_id (id:%d)",
+                       tag, block_id, tmp_block_id);
+
+      if (way != nullptr) *way = tmp_way;
 
       return superblock_info.peekBlock(tmp_block_id);
     }
@@ -172,6 +179,12 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   // assert(ins_data != nullptr);  // Possible to insert null lines (TLB)
   assert(writebacks != nullptr);
 
+  IntPtr ins_addr = m_parent_cache->tagToAddress(ins_block_info->getTag());
+  IntPtr ins_supertag;
+  UInt32 ins_block_id;
+  m_parent_cache->splitAddress(ins_addr, nullptr, &ins_supertag, nullptr,
+                               &ins_block_id, nullptr);
+
   /*
    * First insert attempt: scan through superblocks and test to see if
    * ins_block_info can be inserted using canInsertBlockInfo.  If there is
@@ -181,15 +194,14 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   for (UInt32 i = 0; i < m_associativity; ++i) {
     SuperblockInfo& merge_superblock_info = m_superblock_info_ways[i];
     BlockData& merge_data                 = m_data_ways[i];
-    UInt32 merge_block_id;
 
     // TODO: arbitrate between schemes, possibly using SuperblockInfo
-    if (merge_superblock_info.canInsertBlockInfo(ins_block_info.get(),
-                                                 &merge_block_id) &&
-        merge_data.isCompressible(merge_block_id, 0, ins_data, m_blocksize)) {
+    if (merge_superblock_info.canInsertBlockInfo(ins_supertag, ins_block_id,
+                                                 ins_block_info.get()) &&
+        merge_data.isCompressible(ins_block_id, 0, ins_data, m_blocksize)) {
 
-      merge_data.insertBlockData(merge_block_id, ins_data);
-      merge_superblock_info.insertBlockInfo(merge_block_id,
+      merge_data.insertBlockData(ins_block_id, ins_data);
+      merge_superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
                                             std::move(ins_block_info));
     }
   }
@@ -218,8 +230,11 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
     if (superblock_info.isValid(i)) {
       std::unique_ptr<Byte> evict_block_data(new Byte[m_blocksize]);
 
-      CacheBlockInfoUPtr evict_block_info = superblock_info.evictBlockInfo(i);
-      IntPtr evict_addr = tagToAddress(evict_block_info->getTag(), m_blocksize);
+      CacheBlockInfoUPtr evict_block_info =
+          std::move(superblock_info.evictBlockInfo(i));
+      IntPtr evict_addr =
+          m_parent_cache->tagToAddress(evict_block_info->getTag());
+
       super_data.evictBlockData(i, evict_block_data.get());
 
       // Allocate and construct a new WritebackTuple in the vector
@@ -229,12 +244,9 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   }
   assert(!superblock_info.isValid());  // Ensure the superblock is now empty
 
-  UInt32 repl_block_id;
-  (void)superblock_info.canInsertBlockInfo(ins_block_info.get(),
-                                           &repl_block_id);
-
-  super_data.insertBlockData(repl_block_id, ins_data);
-  superblock_info.insertBlockInfo(repl_block_id, std::move(ins_block_info));
+  super_data.insertBlockData(ins_block_id, ins_data);
+  superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
+                                  std::move(ins_block_info));
 }
 
 UInt8 CacheSet::getNumQBSAttempts(CacheBase::ReplacementPolicy policy,

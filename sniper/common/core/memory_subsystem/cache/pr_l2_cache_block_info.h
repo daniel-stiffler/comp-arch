@@ -1,5 +1,4 @@
-#ifndef __PR_L2_CACHE_BLOCK_INFO_H__
-#define __PR_L2_CACHE_BLOCK_INFO_H__
+#pragma once
 
 #include "cache_state.h"
 #include "cache_block_info.h"
@@ -28,4 +27,3 @@ class PrL2CacheBlockInfo : public CacheBlockInfo
       void invalidate();
       void clone(CacheBlockInfo* cache_block_info);
 };
-#endif /* __PR_L2_CACHE_BLOCK_INFO_H__ */

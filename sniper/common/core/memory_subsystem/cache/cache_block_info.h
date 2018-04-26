@@ -55,7 +55,7 @@ class CacheBlockInfo {
   UInt64 getOwner() const { return m_owner; }
   void setOwner(UInt64 owner) { m_owner = owner; }
 
-  bool hasOption(option_t option) { return m_options & (1 << option); }
+  bool hasOption(option_t option) const { return m_options & (1 << option); }
   void setOption(option_t option) { m_options |= (1 << option); }
   void clearOption(option_t option) { m_options &= ~(UInt64(1) << option); }
 

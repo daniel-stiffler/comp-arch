@@ -3,11 +3,27 @@
 #include <cassert>
 #include <utility>
 
-SuperblockInfo::SuperblockInfo(IntPtr supertag)
-    : m_supertag(supertag) {}
+SuperblockInfo::SuperblockInfo() : m_supertag(TAG_UNUSED) {}
 
 SuperblockInfo::~SuperblockInfo() {
   // RAII takes care of destructing everything for us
+}
+
+bool SuperblockInfo::canInsertBlockInfo(
+    IntPtr supertag, UInt32 block_id,
+    const CacheBlockInfo* ins_block_info) const {
+
+  (void)ins_block_info;  // TODO
+
+  assert(block_id < SUPERBLOCK_SIZE);
+
+  if (!isValid()) {
+    return true;
+  } else if (!isValid(block_id) && supertag == m_supertag) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 void SuperblockInfo::swapBlockInfo(UInt32 block_id,
@@ -19,12 +35,23 @@ void SuperblockInfo::swapBlockInfo(UInt32 block_id,
 }
 
 CacheBlockInfoUPtr SuperblockInfo::evictBlockInfo(UInt32 block_id) {
-
   assert(block_id < SUPERBLOCK_SIZE);
 
   CacheBlockInfoUPtr evict_block = std::move(m_block_infos[block_id]);
 
   return evict_block;
+}
+
+void SuperblockInfo::insertBlockInfo(IntPtr supertag, UInt32 block_id,
+                                     CacheBlockInfoUPtr ins_block_info) {
+
+  assert(canInsertBlockInfo(supertag, block_id, ins_block_info.get()));
+
+  if (!isValid()) {
+    m_supertag = supertag;
+  }
+
+  m_block_infos[block_id] = std::move(ins_block_info);
 }
 
 bool SuperblockInfo::compareTags(UInt32 tag, UInt32* block_id) const {

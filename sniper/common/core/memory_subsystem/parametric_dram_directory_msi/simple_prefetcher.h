@@ -1,5 +1,4 @@
-#ifndef __SIMPLE_PREFETCHER_H
-#define __SIMPLE_PREFETCHER_H
+#pragma once
 
 #include "prefetcher.h"
 
@@ -19,5 +18,3 @@ class SimplePrefetcher : public Prefetcher
       UInt32 n_flow_next;
       std::vector<std::vector<IntPtr> > m_prev_address;
 };
-
-#endif // __SIMPLE_PREFETCHER_H

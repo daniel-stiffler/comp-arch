@@ -1,5 +1,4 @@
-#ifndef TLB_H
-#define TLB_H
+#pragma once
 
 #include "cache.h"
 #include "fixed_types.h"
@@ -25,6 +24,5 @@ class TLB {
   bool lookup(IntPtr address, SubsecondTime now, bool allocate_on_miss = true);
   void allocate(IntPtr address, SubsecondTime now);
 };
-}
 
-#endif  // TLB_H
+}  // namespace ParametricDramDirectoryMSI

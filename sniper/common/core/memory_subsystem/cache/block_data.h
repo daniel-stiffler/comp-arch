@@ -1,5 +1,4 @@
-#ifndef __BLOCK_DATA_H__
-#define __BLOCK_DATA_H__
+#pragma once
 
 #include <unordered_map>
 #include <unordered_set>
@@ -86,5 +85,3 @@ class BlockData {
   void evictBlockData(UInt32 block_id, Byte* evict_data);
   void insertBlockData(UInt32 block_id, const Byte* wr_data);
 };
-
-#endif /* __BLOCK_DATA_H__ */

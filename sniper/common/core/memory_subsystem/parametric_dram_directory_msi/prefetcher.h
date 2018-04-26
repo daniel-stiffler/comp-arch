@@ -1,6 +1,4 @@
-#ifndef PREFETCHER_H
-#define PREFETCHER_H
-
+#pragma once
 #include "fixed_types.h"
 
 #include <vector>
@@ -12,5 +10,3 @@ class Prefetcher
 
       virtual std::vector<IntPtr> getNextAddress(IntPtr current_address, core_id_t core_id) = 0;
 };
-
-#endif // PREFETCHER_H

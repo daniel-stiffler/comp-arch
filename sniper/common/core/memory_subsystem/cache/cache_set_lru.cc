@@ -5,11 +5,12 @@
 
 // Implements LRU replacement, optionally augmented with Query-Based Selection
 // [Jaleel et al., MICRO'10]
-
 CacheSetLRU::CacheSetLRU(CacheBase::cache_t cache_type, UInt32 associativity,
                          UInt32 blocksize, bool compressible,
-                         CacheSetInfoLRU* set_info, UInt8 num_attempts)
-    : CacheSet(cache_type, associativity, blocksize, compressible),
+                         const Cache* parent_cache, CacheSetInfoLRU* set_info,
+                         UInt8 num_attempts)
+    : CacheSet(cache_type, associativity, blocksize, compressible,
+               parent_cache),
       m_num_attempts(num_attempts),
       m_lru_places(associativity),  // Maximum number of buckets
       m_set_info(set_info) {

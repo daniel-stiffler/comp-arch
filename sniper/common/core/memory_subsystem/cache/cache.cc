@@ -32,7 +32,7 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
     // use move semantics to push the unique pointers into the vector
     m_sets.push_back(std::move(CacheSet::createCacheSet(
         cfgname, core_id, replacement_policy, m_cache_type, m_associativity,
-        m_blocksize, m_compressible, m_set_info.get())));
+        m_blocksize, m_compressible, this, m_set_info.get())));
   }
 
 #ifdef ENABLE_SET_USAGE_HIST
@@ -56,21 +56,19 @@ Cache::~Cache() {
 }
 
 Lock& Cache::getSetLock(IntPtr addr) {
-  IntPtr tag;
   UInt32 set_index;
-
-  splitAddress(addr, tag, set_index);
-  assert(set_index < m_num_sets);
+  splitAddress(addr, nullptr, nullptr, &set_index);
 
   return m_sets[set_index]->getLock();
 }
 
+bool Cache::isCompressible() { return m_compressible; }
+UInt32 Cache::getSuperblockSize() { return SUPERBLOCK_SIZE; }
+
 bool Cache::invalidateSingleLine(IntPtr addr) {
   IntPtr tag;
   UInt32 set_index;
-
-  splitAddress(addr, tag, set_index);
-  assert(set_index < m_num_sets);
+  splitAddress(addr, &tag, nullptr, &set_index);
 
   return m_sets[set_index]->invalidate(tag);
 }
@@ -84,14 +82,14 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
 
   IntPtr tag;
   UInt32 set_index;
-  UInt32 way;
   UInt32 block_id;
   UInt32 offset;
+  splitAddress(addr, &tag, nullptr, &set_index, &block_id, &offset);
 
-  splitAddress(addr, tag, set_index, block_id, offset);
+  CacheSet* set = m_sets[set_index].get();
 
-  CacheSet* set              = m_sets[set_index].get();
-  CacheBlockInfo* block_info = set->find(tag, &way, &block_id);
+  UInt32 way;
+  CacheBlockInfo* block_info = set->find(tag, block_id, &way);
 
   if (block_info == nullptr) return nullptr;
 
@@ -115,8 +113,7 @@ void Cache::insertSingleLine(IntPtr addr, const Byte* ins_data,
 
   IntPtr tag;
   UInt32 set_index;
-  UInt32 block_id;
-  splitAddress(addr, tag, set_index, block_id);
+  splitAddress(addr, &tag, nullptr, &set_index);
 
   CacheBlockInfoUPtr block_info =
       std::move(CacheBlockInfo::create(m_cache_type));
@@ -133,72 +130,52 @@ void Cache::insertSingleLine(IntPtr addr, const Byte* ins_data,
 CacheBlockInfo* Cache::peekSingleLine(IntPtr addr) {
   IntPtr tag;
   UInt32 set_index;
-  splitAddress(addr, tag, set_index);
+  UInt32 block_id;
+  splitAddress(addr, &tag, nullptr, &set_index, &block_id);
 
-  return m_sets[set_index]->find(tag);
+  return m_sets[set_index]->find(tag, block_id);
 }
 
-void Cache::splitAddress(const IntPtr addr, IntPtr& tag) const {
-  UInt32 tmp_set_index;
-  UInt32 tmp_block_id;
-  UInt32 tmp_offset;
+CacheBlockInfo* Cache::peekBlock(UInt32 set_index, UInt32 way,
+                                 UInt32 block_id) const {
 
-  splitAddress(addr, tag, tmp_set_index, tmp_block_id, tmp_offset);
+  return m_sets[set_index]->peekBlock(way, block_id);
 }
-void Cache::splitAddress(const IntPtr addr, IntPtr& tag,
-                         UInt32& set_index) const {
 
-  UInt32 tmp_block_id;
-  UInt32 tmp_offset;
+void Cache::splitAddress(IntPtr addr, IntPtr* tag, IntPtr* supertag,
+                         UInt32* set_index, UInt32* block_id,
+                         UInt32* offset) const {
 
-  splitAddress(addr, tag, set_index, tmp_block_id, tmp_offset);
-}
-void Cache::splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
-                         UInt32& block_id) const {
-  UInt32 tmp_offset;
+  UInt32 log2_superblock_size = std::log2(SUPERBLOCK_SIZE);
+  UInt32 log2_blocksize       = std::log2(m_blocksize);
 
-  splitAddress(addr, tag, set_index, block_id, tmp_offset);
-}
-void Cache::splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
-                         UInt32& block_id, UInt32& offset) const {
-
-  UInt32 log2_blocksize = std::log2(m_blocksize);
-
-  tag    = addr >> log2_blocksize;
-  offset = addr & (m_blocksize - 1);
+  if (tag) *tag       = addr >> log2_blocksize;
+  if (offset) *offset = addr & (m_blocksize - 1);
 
   IntPtr linear_addr    = m_ahl ? m_ahl->getLinearAddress(addr) : addr;
   IntPtr superblock_num = linear_addr >> log2_blocksize;
-  IntPtr block_num      = superblock_num >> SUPERBLOCK_SIZE;
 
-  block_id = block_num & (SUPERBLOCK_SIZE - 1);  // Superblocks are consecutive
+  if (supertag) *supertag = superblock_num >> log2_superblock_size;
+  if (block_id) *block_id = superblock_num & (SUPERBLOCK_SIZE - 1);
 
+  IntPtr block_num = superblock_num >> SUPERBLOCK_SIZE;
+
+  UInt32 tmp_set_index;
   switch (m_hash) {
     case CacheBase::HASH_MASK:
-      set_index = block_num & (m_num_sets - 1);
+      tmp_set_index = block_num & (m_num_sets - 1);
       break;
-    case CacheBase::HASH_MOD:
-      set_index = block_num % m_num_sets;
-      break;
-    case CacheBase::HASH_RNG1_MOD: {
-      UInt64 state = rng_seed(block_num);
-      set_index    = rng_next(state) % m_num_sets;
-      break;
-    }
-    case CacheBase::HASH_RNG2_MOD: {
-      UInt64 state = rng_seed(block_num);
-      rng_next(state);
-      set_index = rng_next(state) % m_num_sets;
-      break;
-    }
     default:
-      LOG_PRINT_ERROR("Invalid hash function %d", m_hash);
+      LOG_PRINT_ERROR("Invalid or unsupported hash function %d", m_hash);
       assert(false);
   }
+
+  if (set_index) *set_index = tmp_set_index;
 }
 
 IntPtr Cache::tagToAddress(IntPtr tag) const {
   UInt32 log2_blocksize = std::log2(m_blocksize);
+
   return tag << log2_blocksize;
 }
 
@@ -216,3 +193,6 @@ void Cache::updateHits(Core::mem_op_t mem_op_type, UInt64 hits) {
     m_num_hits += hits;
   }
 }
+
+void Cache::enable() { m_enabled = true; }
+void Cache::disable() { m_enabled = false; }
