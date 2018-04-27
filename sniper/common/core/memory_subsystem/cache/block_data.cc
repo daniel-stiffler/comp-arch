@@ -293,7 +293,7 @@ bool BlockData::isScheme2Compressible(
 bool BlockData::isCompressible(UInt32 block_id, UInt32 offset,
                                const Byte* wr_data, UInt32 bytes,
                                DISH::scheme_t try_scheme,
-                               CacheCompressionCntlr* compress_cntlr) {
+                               CacheCompressionCntlr* compress_cntlr) const {
 
   // NOTE: DISH algorithm does not specify that the dictionary is be recomputed
   // each time, so check compression based on previous entries
@@ -333,14 +333,14 @@ bool BlockData::isCompressible(UInt32 block_id, UInt32 offset,
   assert(false);
 }
 
-bool isValid() const {
+bool BlockData::isValid() const {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     if (m_valid[i]) return true;
   }
 
   return false;
 }
-bool isValid(UInt32 block_id) const {
+bool BlockData::isValid(UInt32 block_id) const {
   assert(block_id < SUPERBLOCK_SIZE);
 
   return m_valid[block_id];
@@ -567,7 +567,7 @@ void BlockData::compressScheme2(UInt32 block_id, UInt32 offset,
           reinterpret_cast<const UInt32*>(&m_data[uncompressed_block_id][0]);
 
       for (UInt32 i = 0; i < m_chunks_per_block; ++i) {
-        UInt32 tmp = data_uncompressed_chunks >> DISH::SCHEME2_OFFSET_BITS;
+        UInt32 tmp = data_uncompressed_chunks[i] >> DISH::SCHEME2_OFFSET_BITS;
         m_data_ptrs[uncompressed_block_id][i] = insertDictEntry(tmp);
         m_data_offsets[uncompressed_block_id][i] =
             data_uncompressed_chunks[i] & DISH::SCHEME2_OFFSET_MASK;
@@ -580,7 +580,7 @@ void BlockData::compressScheme2(UInt32 block_id, UInt32 offset,
 
     for (UInt32 i = 0; i < m_chunks_per_block; ++i) {
       m_data_ptrs[block_id][i]    = insertDictEntry(wr_data_chunks[i] >> 4);
-      m_data_offsets[block_id][i] = wr_data_chunks[i] & DISH::SCHEME2_MASK;
+      m_data_offsets[block_id][i] = wr_data_chunks[i] & DISH::SCHEME2_OFFSET_MASK;
     }
   } else {
     assert(false);
@@ -773,17 +773,17 @@ DISH::scheme_t BlockData::getSchemeForInsertion(UInt32 block_id, const Byte* wr_
           case DISH::scheme_t::UNCOMPRESSED:
             default_scheme = compress_cntlr->getDefaultScheme();
             if (default_scheme == DISH::scheme_t::SCHEME1) {
-              if(isScheme1Compressible(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr)) {
+              if(isScheme1Compressible(block_id, 0, wr_data, m_blocksize, compress_cntlr)) {
                 return DISH::scheme_t::SCHEME1;
-              } else if (isScheme2Compressible(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr)) {
+              } else if (isScheme2Compressible(block_id, 0, wr_data, m_blocksize, compress_cntlr)) {
                 return DISH::scheme_t::SCHEME2;
               } else {
                 return DISH::scheme_t::INVALID;
               }
             } else if(default_scheme == DISH::scheme_t::SCHEME2){
-              if(isScheme2Compressible(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr)) {
+              if(isScheme2Compressible(block_id, 0, wr_data, m_blocksize, compress_cntlr)) {
                 return DISH::scheme_t::SCHEME2;
-              } else if (isScheme2Compressible(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr)) {
+              } else if (isScheme2Compressible(block_id, 0, wr_data, m_blocksize, compress_cntlr)) {
                 return DISH::scheme_t::SCHEME1;
               } else {
                 return DISH::scheme_t::INVALID;
@@ -797,11 +797,11 @@ DISH::scheme_t BlockData::getSchemeForInsertion(UInt32 block_id, const Byte* wr_
           // currently in scheme 1
           case DISH::scheme_t::SCHEME1:
             if (isScheme1Compressible(block_id, 0, wr_data,
-                                      BLOCKSIZE_BYTES, compress_cntlr)) {
+                                      m_blocksize, compress_cntlr)) {
               return DISH::scheme_t::SCHEME1;
             } else if (compress_cntlr->canChangeSchemeOTF() &&
                        isScheme2Compressible(block_id, 0, wr_data,
-                                             BLOCKSIZE_BYTES, compress_cntlr)) {
+                                             m_blocksize, compress_cntlr)) {
               return DISH::scheme_t::SCHEME2;
             } else {
               return DISH::scheme_t::INVALID;
@@ -811,10 +811,10 @@ DISH::scheme_t BlockData::getSchemeForInsertion(UInt32 block_id, const Byte* wr_
           // currently in scheme 2
           case DISH::scheme_t::SCHEME2:
             if (isScheme2Compressible(block_id, 0, wr_data,
-                                      BLOCKSIZE_BYTES, compress_cntlr)) {
+                                      m_blocksize, compress_cntlr)) {
               return DISH::scheme_t::SCHEME2;
             } else if (compress_cntlr->canChangeSchemeOTF() &&
-                       isScheme1Compressible(block_id, 0, wr_data,BLOCKSIZE_BYTES, compress_cntlr)) {
+                       isScheme1Compressible(block_id, 0, wr_data, m_blocksize, compress_cntlr)) {
               return DISH::scheme_t::SCHEME1;
             } else {
               return DISH::scheme_t::INVALID;
@@ -857,7 +857,7 @@ void BlockData::insertBlockData(UInt32 block_id, const Byte* wr_data,
   DISH::scheme_t new_scheme = getSchemeForInsertion(block_id, wr_data, compress_cntlr);
   assert(new_scheme != DISH::scheme_t::INVALID);
 
-  compress(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr, new_scheme);
+  compress(block_id, 0, wr_data, m_blocksize, compress_cntlr, new_scheme);
 
   m_valid[block_id] = true;
   if (compress_cntlr->shouldPruneDISHEntries()) {
