@@ -67,6 +67,9 @@ bool BlockData::initScheme(DISH::scheme_t new_scheme) {
         m_free_ptrs.insert(i);
       }
       break;
+
+    case DISH::scheme_t::INVALID:
+      assert(false);
   }
 
   return true;
@@ -92,7 +95,7 @@ BlockData::BlockData(UInt32 blocksize)
 BlockData::~BlockData() {}
 
 bool BlockData::isScheme1Compressible(UInt32 block_id, UInt32 offset,
-                                      const Byte* wr_data, UInt32 bytes, CacheCompressionCntlr* compress_cntlr) {
+                                      const Byte* wr_data, UInt32 bytes, CacheCompressionCntlr* compress_cntlr) const {
 
   assert(isValid());
   assert((wr_data != nullptr) || (wr_data == nullptr && bytes == 0));
@@ -168,7 +171,7 @@ bool BlockData::isScheme1Compressible(UInt32 block_id, UInt32 offset,
 }
 
 bool BlockData::isScheme2Compressible(UInt32 block_id, UInt32 offset,
-                                      const Byte* wr_data, UInt32 bytes, CacheCompressionCntlr* compress_cntlr) {
+                                      const Byte* wr_data, UInt32 bytes, CacheCompressionCntlr* compress_cntlr) const {
 
   assert(isValid());
   assert((wr_data != nullptr) || (wr_data == nullptr && bytes == 0));
@@ -367,6 +370,8 @@ void BlockData::compact() {
     case DISH::scheme_t::UNCOMPRESSED:
       // No compaction is necessary
       break;
+    case DISH::scheme_t::INVALID:
+      assert(false);
   }
 }
 
@@ -453,8 +458,15 @@ void BlockData::compressScheme1(UInt32 block_id, UInt32 offset,
     // Copy raw data into the uncompressed array for fast access
     std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
   } else if (m_scheme == DISH::scheme_t::SCHEME2) {
-    // FIXME
-    LOG_PRINT_ERROR("Invalid attempt to change compression scheme on-the-fly");
+    if(compress_cntlr->canChangeSchemeOTF()){
+      compress_cntlr->insert(DISH::scheme_t::SCHEME1);
+
+      initScheme(DISH::scheme_t::SCHEME1);
+
+    } else {
+      LOG_PRINT_ERROR("Invalid attempt to change compression scheme on-the-fly");
+      // Do not convert between compression schemes on-the-fly
+    }
   } else {
     assert(false);
   }
@@ -548,11 +560,11 @@ void BlockData::compressScheme2(UInt32 block_id, UInt32 offset,
 }
 
 void BlockData::compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
-                         UInt32 bytes, CacheCompressionCntlr* compress_cntlr) {
+                         UInt32 bytes, CacheCompressionCntlr* compress_cntlr, DISH::scheme_t new_scheme) {
 
   assert(offset + bytes <= m_blocksize);
   assert(block_id < SUPERBLOCK_SIZE);
-
+  fivijvoijdoivj; // break compile as this function needs to be fixed
   if (!isValid()) {
     // Current superblock is empty, so just copy new data into the buffer
     std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
@@ -589,7 +601,7 @@ void BlockData::compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
   }
 }
 
-void BlockData::decompress(UInt32 block_id, UInt32 offset, UInt32 bytes,
+void BlockData::readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
                            Byte* rd_data) const {
 
   assert(offset + bytes < BLOCKSIZE_BYTES);
@@ -611,7 +623,6 @@ void BlockData::evictBlockData(UInt32 block_id, Byte* evict_data, CacheCompressi
   LOG_ASSERT_ERROR(m_valid[block_id], "Attempted to evict an invalid block %u",
                    block_id);
 
-  decompress(block_id, 0, BLOCKSIZE_BYTES, evict_data);
   m_valid[block_id] = false;
   std::fill_n(&m_data[block_id][0], BLOCKSIZE_BYTES, 0);
 
@@ -624,9 +635,124 @@ void BlockData::evictBlockData(UInt32 block_id, Byte* evict_data, CacheCompressi
     compact();
   }
 }
+DISH::scheme_t BlockData::getSchemeForWrite(UInt32 block_id, UInt32 offset,
+                                 const Byte* wr_data, UInt32 bytes,
+                                 CacheCompressionCntlr* compress_cntlr) const {
+  if (!isValid() || !m_valid[block_id]) {
+    return DISH::scheme_t::INVALID;
+  } else {
+    switch (m_scheme) {
+      case DISH::scheme_t::UNCOMPRESSED:
+        return DISH::scheme_t::UNCOMPRESSED;
+      case DISH::scheme_t::SCHEME1:
+        if (isScheme1Compressible(block_id, offset, wr_data, bytes, compress_cntlr)) {
+          return DISH::scheme_t::SCHEME1;
+        } else if (compress_cntlr->canChangeSchemeOTF() &&
+                   isScheme2Compressible(block_id, offset, wr_data, bytes, compress_cntlr)) {
+          return DISH::scheme_t::SCHEME2;
+        } else {
+          return DISH::scheme_t::INVALID;
+        }
 
-bool BlockData::canInsertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr) {
-  return false;
+      case DISH::scheme_t::SCHEME2:
+        if (isScheme2Compressible(block_id, offset, wr_data, bytes, compress_cntlr)) {
+          return DISH::scheme_t::SCHEME2;
+        } else if (compress_cntlr->canChangeSchemeOTF() &&
+                   isScheme1Compressible(block_id, offset, wr_data, bytes, compress_cntlr)) {
+          return DISH::scheme_t::SCHEME1;
+        } else {
+          return DISH::scheme_t::INVALID;
+        }
+      default:
+        assert(false);
+        return DISH::scheme_t::INVALID;
+    }
+  }
+}
+
+DISH::scheme_t BlockData::getSchemeForInsertion(UInt32 block_id, const Byte* wr_data,
+                                     CacheCompressionCntlr* compress_cntlr) const {
+  if (compress_cntlr->canCompress()) {
+    if (isValid()) {
+      if (m_valid[block_id]) {
+        return DISH::scheme_t::INVALID;
+      } else {
+        DISH::scheme_t default_scheme;
+        switch (m_scheme) {
+
+          // currently uncompressed
+          case DISH::scheme_t::UNCOMPRESSED:
+            default_scheme = compress_cntlr->getDefaultScheme();
+            if (default_scheme == DISH::scheme_t::SCHEME1) {
+              if(isScheme1Compressible(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr)) {
+                return DISH::scheme_t::SCHEME1;
+              } else if (isScheme2Compressible(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr)) {
+                return DISH::scheme_t::SCHEME2;
+              } else {
+                return DISH::scheme_t::INVALID;
+              }
+            } else if(default_scheme == DISH::scheme_t::SCHEME2){
+              if(isScheme2Compressible(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr)) {
+                return DISH::scheme_t::SCHEME2;
+              } else if (isScheme2Compressible(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr)) {
+                return DISH::scheme_t::SCHEME1;
+              } else {
+                return DISH::scheme_t::INVALID;
+              }
+            } else {
+              assert(false);
+              return DISH::scheme_t::INVALID;
+            }
+            break;
+
+          // currently in scheme 1
+          case DISH::scheme_t::SCHEME1:
+            if (isScheme1Compressible(block_id, 0, wr_data,
+                                      BLOCKSIZE_BYTES, compress_cntlr)) {
+              return DISH::scheme_t::SCHEME1;
+            } else if (compress_cntlr->canChangeSchemeOTF() &&
+                       isScheme2Compressible(block_id, 0, wr_data,
+                                             BLOCKSIZE_BYTES, compress_cntlr)) {
+              return DISH::scheme_t::SCHEME2;
+            } else {
+              return DISH::scheme_t::INVALID;
+            }
+            break;
+
+          // currently in scheme 2
+          case DISH::scheme_t::SCHEME2:
+            if (isScheme2Compressible(block_id, 0, wr_data,
+                                      BLOCKSIZE_BYTES, compress_cntlr)) {
+              return DISH::scheme_t::SCHEME2;
+            } else if (compress_cntlr->canChangeSchemeOTF() &&
+                       isScheme1Compressible(block_id, 0, wr_data,BLOCKSIZE_BYTES, compress_cntlr)) {
+              return DISH::scheme_t::SCHEME1;
+            } else {
+              return DISH::scheme_t::INVALID;
+            }
+            break;
+
+          // should be unreachable
+          default:
+            assert(false);
+            return DISH::scheme_t::INVALID;
+        }
+      }
+    } else {
+      return DISH::scheme_t::UNCOMPRESSED;
+    }
+  } else {
+    return (isValid() ? DISH::scheme_t::INVALID : DISH::scheme_t::UNCOMPRESSED);
+  }
+}
+
+bool BlockData::canInsertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr) const {
+  assert(block_id < SUPERBLOCK_SIZE);
+  assert(wr_data != nullptr);
+  if (!m_valid[block_id]) {
+    return false;
+  }
+  return (getSchemeForInsertion(block_id, wr_data, compress_cntlr) != DISH::scheme_t::INVALID);
 }
 
 void BlockData::insertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr) {
@@ -637,6 +763,14 @@ void BlockData::insertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompr
                    "Attempted to insert block %u on top of an existing one",
                    block_id);
 
-  compress(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr);
+  DISH::scheme_t new_scheme = getSchemeForInsertion(block_id, wr_data, compress_cntlr);
+  assert(new_scheme != DISH::scheme_t::INVALID);
+
+  compress(block_id, 0, wr_data, BLOCKSIZE_BYTES, compress_cntlr, new_scheme);
+
   m_valid[block_id] = true;
+  if (compress_cntlr->shouldPruneDISHEntries()) {
+    compact();
+  }
+
 }
