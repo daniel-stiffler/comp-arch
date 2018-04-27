@@ -11,12 +11,13 @@ class CacheCompressionCntlr;
 class BlockData {
  protected:
   const UInt32 m_blocksize;
+  const UInt32 m_chunks_per_block;
   DISH::scheme_t m_scheme;
   bool m_valid[SUPERBLOCK_SIZE];
 
   // Cache lines are stored as contiguous blocks of memory to reduce runtime
   // overhead of decompression
-  UInt8 m_data[SUPERBLOCK_SIZE][BLOCKSIZE_BYTES];
+  std::array<std::vector<UInt8>, SUPERBLOCK_SIZE> m_data;
 
   // 4-byte dictionary entries, used either as 4-byte values or 28-bit truncated
   // representation
@@ -32,24 +33,18 @@ class BlockData {
   UInt8 m_data_offsets[SUPERBLOCK_SIZE][DISH::BLOCK_ENTRIES];
 
  private:
-  bool lookupDictEntry(UInt32 value, UInt8* ptr = nullptr);
+  bool lookupDictEntry(UInt32 value, UInt8* ptr = nullptr) const;
   UInt8 insertDictEntry(UInt32 value);
   void removeDictEntry(UInt8 ptr);
-  bool initScheme(DISH::scheme_t new_scheme);
-  UInt32 getFirstValid() {
-    for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-      if (m_valid[i]) return i;
-    }
-
-    return SUPERBLOCK_SIZE;
-  }
+  void changeScheme(DISH::scheme_t new_scheme);
+  UInt32 getFirstValid() const;
 
   bool isScheme1Compressible(UInt32 block_id, UInt32 offset,
                              const Byte* wr_data, UInt32 bytes,
-                             CacheCompressionCntlr* compress_cntlr);
+                             CacheCompressionCntlr* compress_cntlr) const;
   bool isScheme2Compressible(UInt32 block_id, UInt32 offset,
                              const Byte* wr_data, UInt32 bytes,
-                             CacheCompressionCntlr* compress_cntlr);
+                             CacheCompressionCntlr* compress_cntlr) const;
 
   void compactScheme1();
   void compactScheme2();
@@ -64,22 +59,11 @@ class BlockData {
   virtual ~BlockData();
 
   bool isCompressible(UInt32 block_id, UInt32 offset, const Byte* wr_data,
-                      UInt32 bytes,
-                      DISH::scheme_t try_scheme,
-                      CacheCompressionCntlr* compress_cntlr);
+                      UInt32 bytes, DISH::scheme_t try_scheme,
+                      CacheCompressionCntlr* compress_cntlr) const;
 
-  bool isValid() const {
-    for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-      if (m_valid[i]) return true;
-    }
-
-    return false;
-  }
-  bool isValid(UInt32 block_id) const {
-    assert(block_id < SUPERBLOCK_SIZE);
-
-    return m_valid[block_id];
-  }
+  bool isValid() const;
+  bool isValid(UInt32 block_id) const;
 
   void compact();
   void compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
@@ -87,6 +71,8 @@ class BlockData {
   void decompress(UInt32 block_id, UInt32 offset, UInt32 bytes,
                   Byte* rd_data) const;
 
-  void evictBlockData(UInt32 block_id, Byte* evict_data, CacheCompressionCntlr* compress_cntlr);
-  void insertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr);
+  void evictBlockData(UInt32 block_id, Byte* evict_data,
+                      CacheCompressionCntlr* compress_cntlr);
+  void insertBlockData(UInt32 block_id, const Byte* wr_data,
+                       CacheCompressionCntlr* compress_cntlr);
 };
