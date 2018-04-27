@@ -109,9 +109,7 @@ bool BlockData::isScheme1Compressible(UInt32 block_id, UInt32 offset,
       UInt32 end_chunk = (offset + bytes + DISH::GRANULARITY_BYTES - 1) /
                          DISH::GRANULARITY_BYTES;
 
-      if(compress_cntlr->shouldPruneDISHEntries()){
-        compactScheme1();
-      }
+
       UInt32 tmp_vacancies = m_free_ptrs.size();
       for (UInt32 i = start_chunk; i < end_chunk; ++i) {
         if (!lookupDictEntry(wr_data_chunks[i])) {
@@ -195,9 +193,6 @@ bool BlockData::isScheme2Compressible(UInt32 block_id, UInt32 offset,
       UInt32 end_chunk = (offset + bytes + DISH::GRANULARITY_BYTES - 1) /
                          DISH::GRANULARITY_BYTES;
 
-      if(compress_cntlr->shouldPruneDISHEntries()){
-        compactScheme2();
-      }
       UInt32 tmp_vacancies = m_free_ptrs.size();
       for (UInt32 i = start_chunk; i < end_chunk; ++i) {
         if (!lookupDictEntry(wr_data_chunks[i] >> 4)) {
@@ -410,6 +405,11 @@ void BlockData::compressScheme1(UInt32 block_id, UInt32 offset,
   } else if (m_scheme == DISH::scheme_t::SCHEME1) {
     // Cast to a 4-word type, which has the same granularity of cache blocks in
     // DISH
+
+    if(compress_cntlr->shouldPruneDISHEntries()){
+      compactScheme1();
+    }
+
     const UInt32* wr_data_chunks = reinterpret_cast<const UInt32*>(wr_data);
     UInt32 start_chunk           = offset / DISH::GRANULARITY_BYTES;
     UInt32 end_chunk = (offset + bytes + DISH::GRANULARITY_BYTES - 1) /
@@ -620,6 +620,8 @@ void BlockData::evictBlockData(UInt32 block_id, Byte* evict_data, CacheCompressi
   if (!isValid()) {
     compress_cntlr->evict(m_scheme);
     initScheme(DISH::scheme_t::UNCOMPRESSED);
+  } else if(compress_cntlr->shouldPruneDISHEntries()){
+    compact();
   }
 }
 
