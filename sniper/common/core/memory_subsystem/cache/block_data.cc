@@ -68,9 +68,15 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       m_free_ptrs.clear();
       m_used_ptrs.clear();
     } else if (new_scheme == DISH::scheme_t::SCHEME2) {
-      // TODO: OTF scheme switching
-      LOG_PRINT_ERROR(
-          "Invalid attempt to change compression scheme on-the-fly");
+      m_dict.clear();
+      m_free_ptrs.clear();
+      m_used_ptrs.clear();
+      // Add all pointers to free list
+      for (UInt8 p = 0; p < DISH::SCHEME2_DICT_SIZE; ++p) {
+        m_free_ptrs.insert(p);
+      }
+      //LOG_PRINT_ERROR(
+      //    "Invalid attempt to change compression scheme on-the-fly");
     }
   } else if (m_scheme == DISH::scheme_t::SCHEME2) {
     if (new_scheme == DISH::scheme_t::UNCOMPRESSED) {
@@ -78,9 +84,15 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       m_free_ptrs.clear();
       m_used_ptrs.clear();
     } else if (new_scheme == DISH::scheme_t::SCHEME1) {
-      // TODO: OTF scheme switching
-      LOG_PRINT_ERROR(
-          "Invalid attempt to change compression scheme on-the-fly");
+      m_dict.clear();
+      m_free_ptrs.clear();
+      m_used_ptrs.clear();
+      // Add all pointers to free list
+      for (UInt8 p = 0; p < DISH::SCHEME1_DICT_SIZE; ++p) {
+        m_free_ptrs.insert(p);
+      }
+      //LOG_PRINT_ERROR(
+      //    "Invalid attempt to change compression scheme on-the-fly");
     }
   }
 }
@@ -595,13 +607,40 @@ void BlockData::compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
 
   assert(offset + bytes <= m_blocksize);
   assert(block_id < SUPERBLOCK_SIZE);
-  fivijvoijdoivj; // break compile as this function needs to be fixed
+  switch (new_scheme) {
+    case DISH::scheme_t::UNCOMPRESSED:
+      if(m_scheme != new_scheme) {
+        assert(false);
+      }
+      std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
+      break;
+    case DISH::scheme_t::SCHEME1:
+      compressScheme1(block_id, offset, wr_data, bytes, compress_cntlr);
+      break;
+
+    case DISH::scheme_t::SCHEME2:
+      compressScheme2(block_id, offset, wr_data, bytes, compress_cntlr);
+      break;
+
+    default:
+      assert(false);
+      break;
+  }
+  //fivijvoijdoivj; // break compile as this function needs to be fixed
+  /*
   if (!isValid()) {
+    // make sure the scheme is Uncompressed
+    if (m_scheme != DISH::scheme_t::scheme_t::UNCOMPRESSED) {
+      if (m_scheme != DISH::scheme_t::INVALID) {
+        compress_cntlr->evict(m_scheme);
+      } else {
+        assert(false);
+      }
+      changeScheme(DISH::scheme_t::UNCOMPRESSED);
+    }
+
     // Current superblock is empty, so just copy new data into the buffer
     std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
-
-    // Mark the block_id as being valid
-    m_valid[block_id] = true;
   } else if (m_scheme == DISH::scheme_t::UNCOMPRESSED) {
     if (m_valid[block_id]) {
       // Current superblock contains the line in the uncompressed scheme
@@ -613,6 +652,7 @@ void BlockData::compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
       if (first_scheme == DISH::scheme_t::SCHEME1) {
         if (isScheme1Compressible(block_id, offset, wr_data, bytes,
                                   compress_cntlr)) {
+          changeScheme(DISH)
           compressScheme1(block_id, offset, wr_data, bytes, compress_cntlr);
         } else if (isScheme2Compressible(block_id, offset, wr_data, bytes,
                                          compress_cntlr)) {
@@ -656,7 +696,7 @@ void BlockData::compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
     }
   } else {
     assert(false);
-  }
+  }*/
 }
 
 void BlockData::readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
