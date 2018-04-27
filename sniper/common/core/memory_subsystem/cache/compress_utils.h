@@ -9,7 +9,6 @@
 
 constexpr IntPtr TAG_UNUSED      = static_cast<IntPtr>(~0);
 constexpr UInt32 SUPERBLOCK_SIZE = 4;
-constexpr UInt32 BLOCKSIZE_BYTES = 64;
 
 namespace DISH {
 constexpr UInt32 SCHEME1_DICT_SIZE = 8;
@@ -17,7 +16,8 @@ constexpr UInt32 SCHEME2_DICT_SIZE = 4;
 constexpr UInt32 GRANULARITY_BYTES = 4;
 constexpr UInt32 BLOCK_ENTRIES     = 16;
 
-constexpr UInt32 SCHEME2_MASK = 0xf;
+constexpr UInt32 SCHEME2_OFFSET_BITS = 4;
+constexpr UInt32 SCHEME2_OFFSET_MASK = 0xf;
 
 enum class scheme_t { UNCOMPRESSED, SCHEME1, SCHEME2 };
 }  // namespace DISH
