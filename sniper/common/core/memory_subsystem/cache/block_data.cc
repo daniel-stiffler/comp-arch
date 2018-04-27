@@ -625,6 +625,10 @@ void BlockData::evictBlockData(UInt32 block_id, Byte* evict_data, CacheCompressi
   }
 }
 
+bool BlockData::canInsertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr) {
+  return false;
+}
+
 void BlockData::insertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr) {
   assert(block_id < SUPERBLOCK_SIZE);
   assert(wr_data != nullptr);

@@ -89,4 +89,6 @@ class BlockData {
 
   void evictBlockData(UInt32 block_id, Byte* evict_data, CacheCompressionCntlr* compress_cntlr);
   void insertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr);
+  bool canInsertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr);
+  
 };
