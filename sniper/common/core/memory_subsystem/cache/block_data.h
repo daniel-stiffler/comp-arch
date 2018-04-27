@@ -6,6 +6,8 @@
 #include "compress_utils.h"
 #include "superblock_info.h"
 
+class CacheCompressionCntlr;
+
 class BlockData {
  protected:
   const UInt32 m_blocksize;
@@ -43,17 +45,19 @@ class BlockData {
   }
 
   bool isScheme1Compressible(UInt32 block_id, UInt32 offset,
-                             const Byte* wr_data, UInt32 bytes);
+                             const Byte* wr_data, UInt32 bytes,
+                             CacheCompressionCntlr* compress_cntlr);
   bool isScheme2Compressible(UInt32 block_id, UInt32 offset,
-                             const Byte* wr_data, UInt32 bytes);
+                             const Byte* wr_data, UInt32 bytes,
+                             CacheCompressionCntlr* compress_cntlr);
 
   void compactScheme1();
   void compactScheme2();
 
   void compressScheme1(UInt32 block_id, UInt32 offset, const Byte* wr_data,
-                       UInt32 bytes);
+                       UInt32 bytes, CacheCompressionCntlr* compress_cntlr);
   void compressScheme2(UInt32 block_id, UInt32 offset, const Byte* wr_data,
-                       UInt32 bytes);
+                       UInt32 bytes, CacheCompressionCntlr* compress_cntlr);
 
  public:
   BlockData(UInt32 blocksize);
@@ -61,7 +65,8 @@ class BlockData {
 
   bool isCompressible(UInt32 block_id, UInt32 offset, const Byte* wr_data,
                       UInt32 bytes,
-                      DISH::scheme_t try_scheme = DISH::scheme_t::SCHEME1);
+                      DISH::scheme_t try_scheme,
+                      CacheCompressionCntlr* compress_cntlr);
 
   bool isValid() const {
     for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
@@ -78,10 +83,10 @@ class BlockData {
 
   void compact();
   void compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
-                UInt32 bytes);
+                UInt32 bytes, CacheCompressionCntlr* compress_cntlr);
   void decompress(UInt32 block_id, UInt32 offset, UInt32 bytes,
                   Byte* rd_data) const;
 
-  void evictBlockData(UInt32 block_id, Byte* evict_data);
-  void insertBlockData(UInt32 block_id, const Byte* wr_data);
+  void evictBlockData(UInt32 block_id, Byte* evict_data, CacheCompressionCntlr* compress_cntlr);
+  void insertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr);
 };

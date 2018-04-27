@@ -11,7 +11,7 @@
 class CacheSetInfoLRU : public CacheSetInfo {
  public:
   CacheSetInfoLRU(String name, String cfgname, core_id_t core_id,
-                  UInt32 associativity, bool compressible, UInt8 num_attempts);
+                  UInt32 associativity, UInt8 num_attempts);
   virtual ~CacheSetInfoLRU();
 
   void increment(UInt32 way) {
@@ -32,7 +32,6 @@ class CacheSetInfoLRU : public CacheSetInfo {
 
  private:
   const UInt32 m_associativity;
-  const bool m_compressible;
   std::vector<UInt64> m_access;
   std::vector<UInt64> m_attempts;
 };
@@ -40,7 +39,7 @@ class CacheSetInfoLRU : public CacheSetInfo {
 class CacheSetLRU : public CacheSet {
  public:
   CacheSetLRU(CacheBase::cache_t cache_type, UInt32 associativity,
-              UInt32 blocksize, bool compressible, const Cache* parent_cache,
+              UInt32 blocksize, CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache,
               CacheSetInfoLRU* set_info, UInt8 num_attempts);
   virtual ~CacheSetLRU();
 

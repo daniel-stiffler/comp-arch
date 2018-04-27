@@ -12,18 +12,21 @@
 Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
              UInt32 associativity, UInt32 blocksize, bool compressible,
              String replacement_policy, cache_t cache_type, hash_t hash,
-             FaultInjector* fault_injector, AddressHomeLookup* ahl)
+             FaultInjector* fault_injector, AddressHomeLookup* ahl,
+             bool change_scheme_on_the_fly, bool prune_dish_entries)
     : CacheBase(name, num_sets, associativity, blocksize, hash, ahl),
       m_enabled(false),
-      m_compressible(compressible),
+      //m_compressible(compressible),
       m_num_accesses(0),
       m_num_hits(0),
       m_cache_type(cache_type),
-      m_fault_injector(fault_injector) {
-
+      m_fault_injector(fault_injector),
+      //m_change_scheme_otf(change_scheme_on_the_fly),
+      //m_prune_dish_entries(prune_dish_entries),
+      m_compression_cntlr(new CacheCompressionCntlr(compressible, change_scheme_on_the_fly, prune_dish_entries)) {
   m_set_info = std::move(
       CacheSet::createCacheSetInfo(name, cfgname, core_id, replacement_policy,
-                                   m_associativity, m_compressible));
+                                   m_associativity, m_compression_cntlr.get()));
 
   // Populate m_sets with newly-constructed objects
   m_sets.reserve(m_num_sets);
@@ -32,7 +35,7 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
     // use move semantics to push the unique pointers into the vector
     m_sets.push_back(std::move(CacheSet::createCacheSet(
         cfgname, core_id, replacement_policy, m_cache_type, m_associativity,
-        m_blocksize, m_compressible, this, m_set_info.get())));
+        m_blocksize, m_compression_cntlr.get(), this, m_set_info.get())));
   }
 
 #ifdef ENABLE_SET_USAGE_HIST
@@ -62,7 +65,7 @@ Lock& Cache::getSetLock(IntPtr addr) {
   return m_sets[set_index]->getLock();
 }
 
-bool Cache::isCompressible() { return m_compressible; }
+bool Cache::isCompressible() { return m_compression_cntlr->canCompress(); }
 UInt32 Cache::getSuperblockSize() { return SUPERBLOCK_SIZE; }
 
 bool Cache::invalidateSingleLine(IntPtr addr) {

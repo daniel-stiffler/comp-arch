@@ -6,10 +6,10 @@
 // Implements LRU replacement, optionally augmented with Query-Based Selection
 // [Jaleel et al., MICRO'10]
 CacheSetLRU::CacheSetLRU(CacheBase::cache_t cache_type, UInt32 associativity,
-                         UInt32 blocksize, bool compressible,
+                         UInt32 blocksize, CacheCompressionCntlr* compression_cntlr,
                          const Cache* parent_cache, CacheSetInfoLRU* set_info,
                          UInt8 num_attempts)
-    : CacheSet(cache_type, associativity, blocksize, compressible,
+    : CacheSet(cache_type, associativity, blocksize, compression_cntlr,
                parent_cache),
       m_num_attempts(num_attempts),
       m_lru_places(associativity),  // Maximum number of buckets
@@ -100,10 +100,9 @@ void CacheSetLRU::moveToMRU(UInt32 accessed_way) {
 }
 
 CacheSetInfoLRU::CacheSetInfoLRU(String name, String cfgname, core_id_t core_id,
-                                 UInt32 associativity, bool compressible,
+                                 UInt32 associativity,
                                  UInt8 num_attempts)
     : m_associativity(associativity),
-      m_compressible(compressible),
       m_access(associativity),
       m_attempts(num_attempts) {
 

@@ -18,10 +18,76 @@
 
 //#define ENABLE_SET_USAGE_HIST
 
+class CacheCompressionCntlr {
+ private:
+  bool m_compressible;
+  bool m_change_scheme_otf;
+  bool m_prune_dish_entries;
+  int num_scheme1;
+  int num_scheme2;
+ public:
+  CacheCompressionCntlr(bool compressible = false,
+                        bool change_scheme_on_the_fly = false,
+                        bool prune_dish_entries = false) :
+      m_compressible(compressible),
+      m_change_scheme_otf(change_scheme_on_the_fly),
+      m_prune_dish_entries(prune_dish_entries),
+      num_scheme1(0), num_scheme2(0) {
+  }
+
+  DISH::scheme_t getDefaultScheme() {
+    if (num_scheme1 >= num_scheme2) {
+      return DISH::scheme_t::SCHEME1;
+    } else {
+      return DISH::scheme_t::SCHEME2;
+    }
+  }
+  
+  void evict(DISH::scheme_t scheme) {
+    switch (scheme) {
+      case DISH::scheme_t::SCHEME1:
+        num_scheme1--;
+        break;
+      case DISH::scheme_t::SCHEME2:
+        num_scheme2--;
+        break;
+      default:
+        break;
+    }
+  }
+
+  void insert(DISH::scheme_t scheme) {
+    switch (scheme) {
+      case DISH::scheme_t::SCHEME1:
+        num_scheme1++;
+        break;
+      case DISH::scheme_t::SCHEME2:
+        num_scheme2++;
+        break;
+      default:
+        break;
+    }
+  }
+
+  bool canCompress() {
+    return m_compressible;
+  }
+
+  bool canChangeSchemeOTF(){
+    return m_compressible && m_change_scheme_otf;
+  }
+
+  bool shouldPruneDISHEntries() {
+    return m_compressible && m_prune_dish_entries;
+  }
+};
+
 class Cache : public CacheBase {
  private:
   bool m_enabled;
-  bool m_compressible;
+//  bool m_compressible;
+//  bool m_change_scheme_otf;
+//  bool m_prune_dish_entries;
 
   // Cache counters
   UInt64 m_num_accesses;
@@ -33,6 +99,7 @@ class Cache : public CacheBase {
   std::unique_ptr<CacheSetInfo> m_set_info;
 
   FaultInjector* m_fault_injector;
+  std::unique_ptr<CacheCompressionCntlr> m_compression_cntlr;
 
 #ifdef ENABLE_SET_USAGE_HIST
   std::vector<UInt64> m_set_usage_hist;
@@ -46,7 +113,9 @@ class Cache : public CacheBase {
         String replacement_policy, cache_t cache_type,
         hash_t hash                   = CacheBase::HASH_MASK,
         FaultInjector* fault_injector = nullptr,
-        AddressHomeLookup* ahl        = nullptr);
+        AddressHomeLookup* ahl        = nullptr,
+        bool change_scheme_on_the_fly = false,
+        bool prune_dish_entries       = false);
   ~Cache();
 
   Lock& getSetLock(IntPtr addr);

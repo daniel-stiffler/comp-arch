@@ -29,13 +29,12 @@ class CacheSet {
   static std::unique_ptr<CacheSet> createCacheSet(
       String cfgname, core_id_t core_id, String replacement_policy,
       CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
-      bool compressible, const Cache* parent_cache,
-      CacheSetInfo* set_info = nullptr);
+      CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache, CacheSetInfo* set_info = nullptr);
 
   // Factory method used to create the CacheSetInfo specialized subclasses
   static std::unique_ptr<CacheSetInfo> createCacheSetInfo(
       String name, String cfgname, core_id_t core_id, String replacement_policy,
-      UInt32 associativity, bool compressible);
+      UInt32 associativity, CacheCompressionCntlr* compression_cntlr);
 
   static CacheBase::ReplacementPolicy parsePolicyType(String policy);
   static UInt8 getNumQBSAttempts(CacheBase::ReplacementPolicy, String cfgname,
@@ -44,7 +43,10 @@ class CacheSet {
  protected:
   UInt32 m_associativity;
   UInt32 m_blocksize;
-  bool m_compressible;
+  CacheCompressionCntlr* m_compression_cntlr;
+  //bool m_compressible;
+  //bool m_change_scheme_otf;
+  //bool m_prune_dish_entries;
   Lock m_lock;
   std::vector<SuperblockInfo> m_superblock_info_ways;
   std::vector<BlockData> m_data_ways;
@@ -53,12 +55,12 @@ class CacheSet {
 
  public:
   CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
-           UInt32 blocksize, bool compressible, const Cache* parent_cache);
+           UInt32 blocksize, CacheCompressionCntlr* compression_cntlr,
+           const Cache* parent_cache);
   virtual ~CacheSet();
 
   UInt32 getAssociativity() { return m_associativity; }
   UInt32 getBlockSize() { return m_blocksize; }
-  bool getCompressible() { return m_compressible; }
   Lock& getLock() { return m_lock; }
 
   void readLine(UInt32 way, UInt32 block_id, UInt32 offset, UInt32 bytes,

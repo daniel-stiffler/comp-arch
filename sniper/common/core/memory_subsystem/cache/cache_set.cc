@@ -12,7 +12,7 @@
 std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     String cfgname, core_id_t core_id, String replacement_policy,
     CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
-    bool compressible, const Cache* parent_cache, CacheSetInfo* set_info) {
+    CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache, CacheSetInfo* set_info) {
 
   CacheBase::ReplacementPolicy policy = parsePolicyType(replacement_policy);
 
@@ -21,7 +21,7 @@ std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     // Fall through
     case CacheBase::LRU_QBS: {
       CacheSet* tmp = new CacheSetLRU(
-          cache_type, associativity, blocksize, compressible, parent_cache,
+          cache_type, associativity, blocksize, compression_cntlr, parent_cache,
           dynamic_cast<CacheSetInfoLRU*>(set_info),
           getNumQBSAttempts(policy, cfgname, core_id));
 
@@ -37,7 +37,7 @@ std::unique_ptr<CacheSet> CacheSet::createCacheSet(
 
 std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
     String name, String cfgname, core_id_t core_id, String replacement_policy,
-    UInt32 associativity, bool compressible) {
+    UInt32 associativity, CacheCompressionCntlr* compression_cntlr) {
 
   CacheBase::ReplacementPolicy policy = parsePolicyType(replacement_policy);
 
@@ -46,7 +46,7 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
     // Fall through
     case CacheBase::LRU_QBS: {
       CacheSetInfo* tmp = new CacheSetInfoLRU(
-          name, cfgname, core_id, associativity, compressible,
+          name, cfgname, core_id, /*compression_cntlr,*/ associativity,
           getNumQBSAttempts(policy, cfgname, core_id));
 
       return std::unique_ptr<CacheSetInfo>(tmp);
@@ -60,11 +60,10 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
 }
 
 CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
-                   UInt32 blocksize, bool compressible,
-                   const Cache* parent_cache)
+                   UInt32 blocksize, CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache)
     : m_associativity(associativity),
       m_blocksize(blocksize),
-      m_compressible(compressible),
+      m_compression_cntlr(compression_cntlr),
       m_superblock_info_ways(associativity),
       m_parent_cache(parent_cache) {
 
@@ -118,8 +117,10 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
 
   BlockData& super_data = m_data_ways[way];
 
-  if (super_data.isCompressible(block_id, offset, wr_data, bytes)) {
-    super_data.compress(block_id, offset, wr_data, bytes);
+  if (super_data.isCompressible(block_id, offset, wr_data, bytes, DISH::scheme_t::SCHEME1, m_compression_cntlr)
+      || super_data.isCompressible(block_id, offset, wr_data, bytes, DISH::scheme_t::SCHEME2, m_compression_cntlr)
+      || super_data.isCompressible(block_id, offset, wr_data, bytes, DISH::scheme_t::UNCOMPRESSED, m_compression_cntlr)) {
+    super_data.compress(block_id, offset, wr_data, bytes, m_compression_cntlr);
 
     if (update_replacement) updateReplacementWay(way);
   } else {
@@ -133,13 +134,13 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
 
     // Current (modified) block data
     std::unique_ptr<Byte> mod_block_data(new Byte[m_blocksize]);
-    super_data.evictBlockData(block_id, mod_block_data.get());
+    super_data.evictBlockData(block_id, mod_block_data.get(), m_compression_cntlr);
 
     CacheBlockInfoUPtr mod_block_info =
         std::move(superblock_info.evictBlockInfo(block_id));
 
     insertLine(std::move(mod_block_info), mod_block_data.get(), writebacks,
-               cntlr);
+                cntlr);
   }
 }
 
@@ -197,12 +198,11 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
 
     // TODO: arbitrate between schemes, possibly using SuperblockInfo
     if (merge_superblock_info.canInsertBlockInfo(ins_supertag, ins_block_id,
-                                                 ins_block_info.get()) &&
-        merge_data.isCompressible(ins_block_id, 0, ins_data, m_blocksize)) {
+                                                   ins_block_info.get())) {
 
-      merge_data.insertBlockData(ins_block_id, ins_data);
+      merge_data.insertBlockData(ins_block_id, ins_data, m_compression_cntlr);
       merge_superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
-                                            std::move(ins_block_info));
+                                              std::move(ins_block_info));
     }
   }
 
@@ -235,7 +235,7 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
       IntPtr evict_addr =
           m_parent_cache->tagToAddress(evict_block_info->getTag());
 
-      super_data.evictBlockData(i, evict_block_data.get());
+      super_data.evictBlockData(i, evict_block_data.get(), m_compression_cntlr);
 
       // Allocate and construct a new WritebackTuple in the vector
       writebacks->emplace_back(evict_addr, std::move(evict_block_info),
@@ -244,7 +244,7 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   }
   assert(!superblock_info.isValid());  // Ensure the superblock is now empty
 
-  super_data.insertBlockData(ins_block_id, ins_data);
+  super_data.insertBlockData(ins_block_id, ins_data, m_compression_cntlr);
   superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
                                   std::move(ins_block_info));
 }
