@@ -65,14 +65,34 @@ class BlockData {
   bool isValid() const;
   bool isValid(UInt32 block_id) const;
 
+private:
   void compact();
+
   void compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
+                UInt32 bytes, CacheCompressionCntlr* compress_cntlr,
+                DISH::scheme_t new_scheme);
+
+  DISH::scheme_t getSchemeForWrite(UInt32 block_id, UInt32 offset,
+                                   const Byte* wr_data, UInt32 bytes,
+                                   CacheCompressionCntlr* compress_cntlr) const;
+
+  DISH::scheme_t getSchemeForInsertion(UInt32 block_id, const Byte* wr_data,
+                                       CacheCompressionCntlr* compress_cntlr) const;
+
+public:
+  void writeBlockData(UInt32 block_id, UInt32 offset, const Byte* wr_data,
                 UInt32 bytes, CacheCompressionCntlr* compress_cntlr);
-  void decompress(UInt32 block_id, UInt32 offset, UInt32 bytes,
+  bool canWriteBlockData(UInt32 block_id, UInt32 offset, const Byte* wr_data,
+                     UInt32 bytes, CacheCompressionCntlr* compress_cntlr) const;
+
+  void readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
                   Byte* rd_data) const;
 
   void evictBlockData(UInt32 block_id, Byte* evict_data,
                       CacheCompressionCntlr* compress_cntlr);
   void insertBlockData(UInt32 block_id, const Byte* wr_data,
                        CacheCompressionCntlr* compress_cntlr);
+
+  bool canInsertBlockData(UInt32 block_id, const Byte* wr_data,
+                          CacheCompressionCntlr* compress_cntlr) const;
 };
