@@ -81,14 +81,22 @@ class BlockData {
     return m_valid[block_id];
   }
 
+private:
   void compact();
+
   void compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
+                UInt32 bytes, CacheCompressionCntlr* compress_cntlr, DISH::scheme_t new_scheme);
+public:
+  void writeBlockData(UInt32 block_id, UInt32 offset, const Byte* wr_data,
                 UInt32 bytes, CacheCompressionCntlr* compress_cntlr);
-  void decompress(UInt32 block_id, UInt32 offset, UInt32 bytes,
+  bool canWriteBlockData(UInt32 block_id, UInt32 offset, const Byte* wr_data,
+                     UInt32 bytes, CacheCompressionCntlr* compress_cntlr);
+
+  void readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
                   Byte* rd_data) const;
 
   void evictBlockData(UInt32 block_id, Byte* evict_data, CacheCompressionCntlr* compress_cntlr);
   void insertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr);
   bool canInsertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr);
-  
+
 };
