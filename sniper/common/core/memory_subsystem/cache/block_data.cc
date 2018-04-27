@@ -670,6 +670,32 @@ DISH::scheme_t BlockData::getSchemeForWrite(UInt32 block_id, UInt32 offset,
   }
 }
 
+void BlockData::writeBlockData(UInt32 block_id, UInt32 offset, const Byte* wr_data,
+                    UInt32 bytes, CacheCompressionCntlr* compress_cntlr) {
+  assert(block_id < SUPERBLOCK_SIZE);
+  assert(wr_data != nullptr);
+
+  DISH::scheme_t new_scheme = getSchemeForWrite(block_id, offset, wr_data,
+                                                bytes, compress_cntlr);
+  assert(new_scheme != DISH::scheme_t::INVALID);
+  compress(block_id, offset, wr_data, bytes, compress_cntlr, new_scheme);
+
+
+  if (compress_cntlr->shouldPruneDISHEntries()) {
+    compact();
+  }
+}
+
+bool BlockData::canWriteBlockData(UInt32 block_id, UInt32 offset, const Byte* wr_data,
+                       UInt32 bytes, CacheCompressionCntlr* compress_cntlr) const {
+  assert(block_id < SUPERBLOCK_SIZE);
+  assert(wr_data != nullptr);
+  if (!m_valid[block_id]) {
+    return false;
+  }
+  return getSchemeForWrite(block_id, offset, wr_data, bytes, compress_cntlr) != DISH::scheme_t::INVALID;
+}
+
 DISH::scheme_t BlockData::getSchemeForInsertion(UInt32 block_id, const Byte* wr_data,
                                      CacheCompressionCntlr* compress_cntlr) const {
   if (compress_cntlr->canCompress()) {
@@ -749,7 +775,7 @@ DISH::scheme_t BlockData::getSchemeForInsertion(UInt32 block_id, const Byte* wr_
 bool BlockData::canInsertBlockData(UInt32 block_id, const Byte* wr_data, CacheCompressionCntlr* compress_cntlr) const {
   assert(block_id < SUPERBLOCK_SIZE);
   assert(wr_data != nullptr);
-  if (!m_valid[block_id]) {
+  if (m_valid[block_id]) {
     return false;
   }
   return (getSchemeForInsertion(block_id, wr_data, compress_cntlr) != DISH::scheme_t::INVALID);
