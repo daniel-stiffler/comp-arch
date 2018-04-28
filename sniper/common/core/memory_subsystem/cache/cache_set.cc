@@ -12,7 +12,8 @@
 std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     String cfgname, core_id_t core_id, String replacement_policy,
     CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
-    CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache, CacheSetInfo* set_info) {
+    CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache,
+    CacheSetInfo* set_info) {
 
   CacheBase::ReplacementPolicy policy = parsePolicyType(replacement_policy);
 
@@ -60,7 +61,8 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
 }
 
 CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
-                   UInt32 blocksize, CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache)
+                   UInt32 blocksize, CacheCompressionCntlr* compression_cntlr,
+                   const Cache* parent_cache)
     : m_associativity(associativity),
       m_blocksize(blocksize),
       m_compression_cntlr(compression_cntlr),
@@ -99,7 +101,7 @@ void CacheSet::readLine(UInt32 way, UInt32 block_id, UInt32 offset,
   assert(superblock_info.isValid(block_id));
 
   const BlockData& super_data = m_data_ways[way];
-  super_data.decompress(block_id, offset, bytes, rd_data);
+  super_data.readBlockData(block_id, offset, bytes, rd_data);
 
   if (update_replacement) updateReplacementWay(way);
 }
@@ -117,10 +119,11 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
 
   BlockData& super_data = m_data_ways[way];
 
-  if (super_data.isCompressible(block_id, offset, wr_data, bytes, DISH::scheme_t::SCHEME1, m_compression_cntlr)
-      || super_data.isCompressible(block_id, offset, wr_data, bytes, DISH::scheme_t::SCHEME2, m_compression_cntlr)
-      || super_data.isCompressible(block_id, offset, wr_data, bytes, DISH::scheme_t::UNCOMPRESSED, m_compression_cntlr)) {
-    super_data.compress(block_id, offset, wr_data, bytes, m_compression_cntlr);
+  if (super_data.canWriteBlockData(block_id, offset, wr_data, bytes,
+                                   m_compression_cntlr)) {
+
+    super_data.writeBlockData(block_id, offset, wr_data, bytes,
+                              m_compression_cntlr);
 
     if (update_replacement) updateReplacementWay(way);
   } else {
@@ -134,13 +137,14 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
 
     // Current (modified) block data
     std::unique_ptr<Byte> mod_block_data(new Byte[m_blocksize]);
-    super_data.evictBlockData(block_id, mod_block_data.get(), m_compression_cntlr);
+    super_data.evictBlockData(block_id, mod_block_data.get(),
+                              m_compression_cntlr);
 
     CacheBlockInfoUPtr mod_block_info =
         std::move(superblock_info.evictBlockInfo(block_id));
 
     insertLine(std::move(mod_block_info), mod_block_data.get(), writebacks,
-                cntlr);
+               cntlr);
   }
 }
 
@@ -198,11 +202,11 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
 
     // TODO: arbitrate between schemes, possibly using SuperblockInfo
     if (merge_superblock_info.canInsertBlockInfo(ins_supertag, ins_block_id,
-                                                   ins_block_info.get())) {
+                                                 ins_block_info.get())) {
 
       merge_data.insertBlockData(ins_block_id, ins_data, m_compression_cntlr);
       merge_superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
-                                              std::move(ins_block_info));
+                                            std::move(ins_block_info));
     }
   }
 

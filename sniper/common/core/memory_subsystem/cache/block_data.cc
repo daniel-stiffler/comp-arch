@@ -75,7 +75,7 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       for (UInt8 p = 0; p < DISH::SCHEME2_DICT_SIZE; ++p) {
         m_free_ptrs.insert(p);
       }
-      //LOG_PRINT_ERROR(
+      // LOG_PRINT_ERROR(
       //    "Invalid attempt to change compression scheme on-the-fly");
     }
   } else if (m_scheme == DISH::scheme_t::SCHEME2) {
@@ -91,7 +91,7 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       for (UInt8 p = 0; p < DISH::SCHEME1_DICT_SIZE; ++p) {
         m_free_ptrs.insert(p);
       }
-      //LOG_PRINT_ERROR(
+      // LOG_PRINT_ERROR(
       //    "Invalid attempt to change compression scheme on-the-fly");
     }
   }
@@ -543,83 +543,6 @@ void BlockData::compressScheme1(UInt32 block_id, UInt32 offset,
   std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
 }
 
-void BlockData::compress(UInt32 block_id, UInt32 offset, const Byte* wr_data,
-                         UInt32 bytes, CacheCompressionCntlr* compress_cntlr,
-                         DISH::scheme_t new_scheme) {
-
-  assert(offset + bytes <= m_blocksize);
-  assert(block_id < SUPERBLOCK_SIZE);
-  if (!isValid()) {
-    // make sure the scheme is Uncompressed
-    if (m_scheme != DISH::scheme_t::UNCOMPRESSED) {
-      if (m_scheme != DISH::scheme_t::INVALID) {
-        compress_cntlr->evict(m_scheme);
-      } else {
-        assert(false);
-      }
-      changeScheme(DISH::scheme_t::UNCOMPRESSED);
-    }
-
-    // Current superblock is empty, so just copy new data into the buffer
-    std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
-  } else if (m_scheme == DISH::scheme_t::UNCOMPRESSED) {
-    if (m_valid[block_id]) {
-      // Current superblock contains the line in the uncompressed scheme
-      std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
-    } else {
-      // Query the compression controller for the schemes to try in order
-      DISH::scheme_t first_scheme = compress_cntlr->getDefaultScheme();
-
-      if (first_scheme == DISH::scheme_t::SCHEME1) {
-        if (isScheme1Compressible(block_id, offset, wr_data, bytes,
-                                  compress_cntlr)) {
-          changeScheme(DISH)
-          compressScheme1(block_id, offset, wr_data, bytes, compress_cntlr);
-        } else if (isScheme2Compressible(block_id, offset, wr_data, bytes,
-                                         compress_cntlr)) {
-          compressScheme2(block_id, offset, wr_data, bytes, compress_cntlr);
-        } else {
-          LOG_PRINT_ERROR("Unable to compress new line with existing one");
-        }
-      } else {
-        if (isScheme2Compressible(block_id, offset, wr_data, bytes,
-                                  compress_cntlr)) {
-          compressScheme2(block_id, offset, wr_data, bytes, compress_cntlr);
-        } else if (isScheme1Compressible(block_id, offset, wr_data, bytes,
-                                         compress_cntlr)) {
-          compressScheme1(block_id, offset, wr_data, bytes, compress_cntlr);
-        } else {
-          LOG_PRINT_ERROR("Unable to compress new line with existing one");
-        }
-      }
-    }
-  } else if (m_scheme == DISH::scheme_t::SCHEME1) {
-    // TODO: OTF scheme change
-    if (isScheme1Compressible(block_id, offset, wr_data, bytes,
-                              compress_cntlr)) {
-      compressScheme1(block_id, offset, wr_data, bytes, compress_cntlr);
-    } else {
-      if (isScheme2Compressible(block_id, offset, wr_data, bytes,
-                                compress_cntlr)) {
-        compressScheme2(block_id, offset, wr_data, bytes, compress_cntlr);
-      } else {
-        LOG_PRINT_ERROR(
-            "Unable to compress line with existing one using SCHEME 1");
-      }
-    }
-  } else if (m_scheme == DISH::scheme_t::SCHEME2) {
-    if (isScheme2Compressible(block_id, offset, wr_data, bytes,
-                              compress_cntlr)) {
-      compressScheme2(block_id, offset, wr_data, bytes, compress_cntlr);
-    } else {
-      LOG_PRINT_ERROR(
-          "Unable to compress line with existing one using SCHEME 2");
-    }
-  } else {
-    assert(false);
-  }
-}
-
 void BlockData::compressScheme2(UInt32 block_id, UInt32 offset,
                                 const Byte* wr_data, UInt32 bytes,
                                 CacheCompressionCntlr* compress_cntlr) {
@@ -848,7 +771,22 @@ void BlockData::writeBlockData(UInt32 block_id, UInt32 offset,
   DISH::scheme_t new_scheme =
       getSchemeForWrite(block_id, offset, wr_data, bytes, compress_cntlr);
 
-  compress(block_id, offset, wr_data, bytes, compress_cntlr, new_scheme);
+  switch (new_scheme) {
+    case DISH::scheme_t::UNCOMPRESSED:
+      std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
+      break;
+
+    case DISH::scheme_t::SCHEME1:
+      compressScheme1(block_id, offset, wr_data, bytes, compress_cntlr);
+      break;
+
+    case DISH::scheme_t::SCHEME2:
+      compressScheme2(block_id, offset, wr_data, bytes, compress_cntlr);
+      break;
+
+    default:
+      LOG_PRINT_ERROR("Invalid attempt to insert line");
+  }
 
   if (compress_cntlr->shouldPruneDISHEntries()) compact();
 }
@@ -896,7 +834,23 @@ void BlockData::insertBlockData(UInt32 block_id, const Byte* wr_data,
   DISH::scheme_t new_scheme =
       getSchemeForInsertion(block_id, wr_data, compress_cntlr);
 
-  compress(block_id, 0, wr_data, m_blocksize, compress_cntlr, new_scheme);
+  switch (new_scheme) {
+    case DISH::scheme_t::UNCOMPRESSED:
+      std::copy_n(wr_data, m_blocksize, &m_data[block_id][0]);
+      break;
+
+    case DISH::scheme_t::SCHEME1:
+      compressScheme1(block_id, 0, wr_data, m_blocksize, compress_cntlr);
+      break;
+
+    case DISH::scheme_t::SCHEME2:
+      compressScheme2(block_id, 0, wr_data, m_blocksize, compress_cntlr);
+      break;
+
+    default:
+      LOG_PRINT_ERROR("Invalid attempt to insert line");
+  }
+
   m_valid[block_id] = true;
   if (compress_cntlr->shouldPruneDISHEntries()) compact();
 }
