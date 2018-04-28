@@ -229,8 +229,11 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
       merge_superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
                                             std::move(ins_block_info));
 
-      LOG_PRINT("END Inserting CacheSet tag: %lu way: %u, merged lines",
-                ins_block_info->getTag(), i);
+      LOG_PRINT(
+          "END Inserting CacheSet ins_supertag: %lx ins_block_id: %u way: %u, "
+          "merged lines",
+          ins_supertag, ins_block_id, i);
+
       return;
     }
   }
@@ -276,8 +279,10 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
                                   std::move(ins_block_info));
 
-  LOG_PRINT("END Inserting CacheSet tag: %lu way: %u, %u writebacks scheduled",
-            ins_block_info->getTag(), repl_way, writebacks->size());
+  LOG_PRINT(
+      "END Inserting CacheSet ins_supertag: %lx ins_block_id: %u way: %u, %u "
+      "writebacks scheduled",
+      ins_supertag, ins_block_id, repl_way, writebacks->size());
 }
 
 UInt8 CacheSet::getNumQBSAttempts(CacheBase::ReplacementPolicy policy,
