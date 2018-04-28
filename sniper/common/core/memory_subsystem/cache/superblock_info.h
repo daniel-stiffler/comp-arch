@@ -15,33 +15,13 @@ class SuperblockInfo {
   SuperblockInfo();
   virtual ~SuperblockInfo();
 
-  CacheBlockInfo* peekBlock(UInt32 block_id) const {
-    assert(block_id < SUPERBLOCK_SIZE);
-
-    CacheBlockInfo* block_info = m_block_infos[block_id].get();
-
-    if (block_info->isValid()) {
-      return block_info;
-    } else {
-      return nullptr;
-    }
-  }
+  CacheBlockInfo* peekBlock(UInt32 block_id) const;
 
   bool canInsertBlockInfo(IntPtr supertag, UInt32 block_id,
                           const CacheBlockInfo* ins_block_info) const;
 
-  bool isValid() const {
-    for (const auto& e : m_block_infos) {
-      if (e->isValid()) return true;
-    }
-
-    return false;
-  }
-  bool isValid(UInt32 block_id) const {
-    assert(block_id < SUPERBLOCK_SIZE);
-
-    return m_block_infos[block_id]->isValid();
-  }
+  bool isValid() const;
+  bool isValid(UInt32 block_id) const;
 
   void swapBlockInfo(UInt32 block_id, CacheBlockInfoUPtr& inout_block_info);
   CacheBlockInfoUPtr evictBlockInfo(UInt32 block_id);
@@ -51,5 +31,5 @@ class SuperblockInfo {
   bool compareTags(UInt32 tag, UInt32* block_id = nullptr) const;
 
   bool isValidReplacement() const;
-  bool invalidate(UInt32 tag);
+  bool invalidate(IntPtr tag);
 };

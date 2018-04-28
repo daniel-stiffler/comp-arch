@@ -29,7 +29,8 @@ class CacheSet {
   static std::unique_ptr<CacheSet> createCacheSet(
       String cfgname, core_id_t core_id, String replacement_policy,
       CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
-      CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache, CacheSetInfo* set_info = nullptr);
+      CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache,
+      CacheSetInfo* set_info = nullptr);
 
   // Factory method used to create the CacheSetInfo specialized subclasses
   static std::unique_ptr<CacheSetInfo> createCacheSetInfo(
@@ -44,9 +45,9 @@ class CacheSet {
   UInt32 m_associativity;
   UInt32 m_blocksize;
   CacheCompressionCntlr* m_compression_cntlr;
-  //bool m_compressible;
-  //bool m_change_scheme_otf;
-  //bool m_prune_dish_entries;
+  // bool m_compressible;
+  // bool m_change_scheme_otf;
+  // bool m_prune_dish_entries;
   Lock m_lock;
   std::vector<SuperblockInfo> m_superblock_info_ways;
   std::vector<BlockData> m_data_ways;

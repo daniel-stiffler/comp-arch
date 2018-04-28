@@ -39,7 +39,6 @@ class BlockData {
   void changeScheme(DISH::scheme_t new_scheme);
   UInt32 getFirstValid() const;
 
-
  public:
   BlockData(UInt32 blocksize);
   virtual ~BlockData();

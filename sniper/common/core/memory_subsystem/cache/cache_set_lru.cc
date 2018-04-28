@@ -6,11 +6,13 @@
 // Implements LRU replacement, optionally augmented with Query-Based Selection
 // [Jaleel et al., MICRO'10]
 CacheSetLRU::CacheSetLRU(CacheBase::cache_t cache_type, UInt32 associativity,
-                         UInt32 blocksize, CacheCompressionCntlr* compression_cntlr,
+                         UInt32 blocksize,
+                         CacheCompressionCntlr* compression_cntlr,
                          const Cache* parent_cache, CacheSetInfoLRU* set_info,
                          UInt8 num_attempts)
     : CacheSet(cache_type, associativity, blocksize, compression_cntlr,
                parent_cache),
+
       m_num_attempts(num_attempts),
       m_lru_places(associativity),  // Maximum number of buckets
       m_set_info(set_info) {
@@ -26,6 +28,8 @@ CacheSetLRU::~CacheSetLRU() {
 }
 
 UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
+  LOG_PRINT("BEGIN CacheSetLRU attempting to find replacement way");
+
   // First try to find an unallocated superblock
   for (UInt32 i = 0; i < m_associativity; ++i) {
     if (!m_superblock_info_ways[i].isValid()) {
@@ -41,12 +45,8 @@ UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
     UInt32 repl_way = m_lru_priorities.back();
 
     bool qbs_reject = false;
-    if (attempt <
-        m_num_attempts - 1) {  // Do not use this on the last iteration
-      LOG_ASSERT_ERROR(cntlr != nullptr,
-                       "CacheCntlr == nullptr, QBS can only be used when cntlr "
-                       "is passed in");
-
+    // Do not use this on the last iteration
+    if (attempt < m_num_attempts - 1) {
       /*
        * Perform query-based-selection on all cache blocks in the superblock.
        * This could potentially lead to hangs, since the SNIPER cache hierarchy
@@ -71,6 +71,8 @@ UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
       // Mark our newly-inserted line as most-recently used
       moveToMRU(repl_way);
       m_set_info->incrementAttempt(attempt);
+
+      LOG_PRINT("END CacheSetLRU found replacement way %u", repl_way);
       return repl_way;
     }
   }
@@ -78,7 +80,6 @@ UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
   LOG_PRINT_ERROR(
       "!! Deadlock condition for cache replacement reached !!"
       "Could not find a suitable line to evict, so we have to panic.");
-  assert(false);
 }
 
 void CacheSetLRU::updateReplacementWay(UInt32 accessed_way) {
@@ -100,8 +101,7 @@ void CacheSetLRU::moveToMRU(UInt32 accessed_way) {
 }
 
 CacheSetInfoLRU::CacheSetInfoLRU(String name, String cfgname, core_id_t core_id,
-                                 UInt32 associativity,
-                                 UInt8 num_attempts)
+                                 UInt32 associativity, UInt8 num_attempts)
     : m_associativity(associativity),
       m_access(associativity),
       m_attempts(num_attempts) {

@@ -42,7 +42,7 @@ class CacheCompressionCntlr {
       return DISH::scheme_t::SCHEME2;
     }
   }
-  
+
   void evict(DISH::scheme_t scheme) {
     switch (scheme) {
       case DISH::scheme_t::SCHEME1:
@@ -85,9 +85,6 @@ class CacheCompressionCntlr {
 class Cache : public CacheBase {
  private:
   bool m_enabled;
-//  bool m_compressible;
-//  bool m_change_scheme_otf;
-//  bool m_prune_dish_entries;
 
   // Cache counters
   UInt64 m_num_accesses;

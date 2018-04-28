@@ -21,12 +21,14 @@ std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     case CacheBase::LRU:
     // Fall through
     case CacheBase::LRU_QBS: {
-      CacheSet* tmp = new CacheSetLRU(
+      CacheSetLRU* tmp = new CacheSetLRU(
           cache_type, associativity, blocksize, compression_cntlr, parent_cache,
           dynamic_cast<CacheSetInfoLRU*>(set_info),
           getNumQBSAttempts(policy, cfgname, core_id));
 
-      return std::unique_ptr<CacheSet>(tmp);
+      CacheSet* tmp_upcast = dynamic_cast<CacheSet*>(tmp);
+
+      return std::unique_ptr<CacheSet>(tmp_upcast);
     } break;  // Not necessary
 
     default:
@@ -46,17 +48,18 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
     case CacheBase::LRU:
     // Fall through
     case CacheBase::LRU_QBS: {
-      CacheSetInfo* tmp = new CacheSetInfoLRU(
+      CacheSetInfoLRU* tmp = new CacheSetInfoLRU(
           name, cfgname, core_id, /*compression_cntlr,*/ associativity,
           getNumQBSAttempts(policy, cfgname, core_id));
 
-      return std::unique_ptr<CacheSetInfo>(tmp);
+      CacheSetInfo* tmp_upcast = dynamic_cast<CacheSetInfo*>(tmp);
+
+      return std::unique_ptr<CacheSetInfo>(tmp_upcast);
     } break;  // Not necessary
 
     default:
       LOG_PRINT_ERROR(
           "Unrecognized or unsupported cache replacement policy: %i", policy);
-      assert(false);
   }
 }
 
@@ -71,8 +74,7 @@ CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
 
   for (auto& superblock_info : m_superblock_info_ways) {
     for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-      CacheBlockInfoUPtr tmp_block_info =
-          std::move(CacheBlockInfo::create(cache_type));
+      CacheBlockInfoUPtr tmp_block_info = CacheBlockInfo::create(cache_type);
 
       // Replace dummy object from initialization with one specialized to
       // cache type
@@ -94,6 +96,10 @@ CacheSet::~CacheSet() {
 void CacheSet::readLine(UInt32 way, UInt32 block_id, UInt32 offset,
                         UInt32 bytes, bool update_replacement, Byte* rd_data) {
 
+  LOG_PRINT(
+      "Reading CacheSet way: %u block_id: %u offset: %u rd_data: %p bytes: %u",
+      way, block_id, offset, rd_data, bytes);
+
   assert(offset + bytes <= m_blocksize);
   assert((rd_data != nullptr) || (rd_data == nullptr && bytes == 0));
 
@@ -110,6 +116,11 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
                          const Byte* wr_data, UInt32 bytes,
                          bool update_replacement, WritebackLines* writebacks,
                          CacheCntlr* cntlr) {
+
+  LOG_PRINT(
+      "BEGIN Writing CacheSet way: %u block_id: %u offset: %u wr_data: %p "
+      "bytes: %u, %u writebacks scheduled",
+      way, block_id, offset, wr_data, bytes, writebacks->size());
 
   assert(offset + bytes <= m_blocksize);
   assert((wr_data != nullptr) || (wr_data == nullptr && bytes == 0));
@@ -141,11 +152,15 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
                               m_compression_cntlr);
 
     CacheBlockInfoUPtr mod_block_info =
-        std::move(superblock_info.evictBlockInfo(block_id));
+        superblock_info.evictBlockInfo(block_id);
 
     insertLine(std::move(mod_block_info), mod_block_data.get(), writebacks,
                cntlr);
   }
+
+  LOG_PRINT(
+      "END Writing CacheSet way: %u block_id: %u, %u writebacks scheduled", way,
+      block_id, writebacks->size());
 }
 
 CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32 block_id, UInt32* way) const {
@@ -154,10 +169,10 @@ CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32 block_id, UInt32* way) const {
 
     UInt32 tmp_block_id;
     if (superblock_info.compareTags(tag, &tmp_block_id)) {
-      LOG_ASSERT_ERROR(block_id == tmp_block_id,
-                       "Found a matching block (tag:%lx, id:%d) at the wrong "
-                       "block_id (id:%d)",
-                       tag, block_id, tmp_block_id);
+      LOG_ASSERT_ERROR(
+          block_id == tmp_block_id,
+          "Found a matching block (tag:%lx block_id:%u) in the wrong place %u",
+          tag, block_id, tmp_block_id);
 
       if (way != nullptr) *way = tmp_way;
 
@@ -169,6 +184,8 @@ CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32 block_id, UInt32* way) const {
 }
 
 bool CacheSet::invalidate(IntPtr tag) {
+  LOG_PRINT("Invalidating CacheSet tag: %lx", tag);
+
   for (auto& superblock_info : m_superblock_info_ways) {
     if (superblock_info.invalidate(tag)) return true;
   }
@@ -179,6 +196,10 @@ bool CacheSet::invalidate(IntPtr tag) {
 void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
                           const Byte* ins_data, WritebackLines* writebacks,
                           CacheCntlr* cntlr) {
+
+  LOG_PRINT(
+      "BEGIN Inserting CacheSet tag: %lu ins_data: %p, %u writebacks scheduled",
+      ins_block_info->getTag(), ins_data, writebacks->size());
 
   assert(ins_block_info.get() != nullptr);
   // assert(ins_data != nullptr);  // Possible to insert null lines (TLB)
@@ -207,6 +228,10 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
       merge_data.insertBlockData(ins_block_id, ins_data, m_compression_cntlr);
       merge_superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
                                             std::move(ins_block_info));
+
+      LOG_PRINT("END Inserting CacheSet tag: %lu way: %u, merged lines",
+                ins_block_info->getTag(), i);
+      return;
     }
   }
 
@@ -234,8 +259,7 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
     if (superblock_info.isValid(i)) {
       std::unique_ptr<Byte> evict_block_data(new Byte[m_blocksize]);
 
-      CacheBlockInfoUPtr evict_block_info =
-          std::move(superblock_info.evictBlockInfo(i));
+      CacheBlockInfoUPtr evict_block_info = superblock_info.evictBlockInfo(i);
       IntPtr evict_addr =
           m_parent_cache->tagToAddress(evict_block_info->getTag());
 
@@ -251,6 +275,9 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   super_data.insertBlockData(ins_block_id, ins_data, m_compression_cntlr);
   superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
                                   std::move(ins_block_info));
+
+  LOG_PRINT("END Inserting CacheSet tag: %lu way: %u, %u writebacks scheduled",
+            ins_block_info->getTag(), repl_way, writebacks->size());
 }
 
 UInt8 CacheSet::getNumQBSAttempts(CacheBase::ReplacementPolicy policy,

@@ -34,6 +34,7 @@ bool TLB::lookup(IntPtr address, SubsecondTime now, bool allocate_on_miss) {
   WritebackLines writebacks;
   writebacks.reserve(1);
 
+  LOG_PRINT("TLB accessing line with page_addr: %lx", page_addr);
   bool hit = m_cache.accessSingleLine(page_addr, Cache::LOAD, nullptr, 0, now,
                                       true, &writebacks);
 

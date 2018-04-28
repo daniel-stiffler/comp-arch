@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -20,6 +21,12 @@ constexpr UInt32 SCHEME2_OFFSET_BITS = 4;
 constexpr UInt32 SCHEME2_OFFSET_MASK = 0xf;
 
 enum class scheme_t { INVALID, UNCOMPRESSED, SCHEME1, SCHEME2 };
+const std::map<scheme_t, const char *> scheme2name{
+    {scheme_t::INVALID, "INVALID"},
+    {scheme_t::UNCOMPRESSED, "UNCOMPRESSED"},
+    {scheme_t::SCHEME1, "SCHEME1"},
+    {scheme_t::SCHEME2, "SCHEME2"}};
+
 }  // namespace DISH
 
 typedef std::unique_ptr<CacheBlockInfo> CacheBlockInfoUPtr;

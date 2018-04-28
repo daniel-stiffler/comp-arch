@@ -50,6 +50,11 @@ void BlockData::removeDictEntry(UInt8 ptr) {
 }
 
 void BlockData::changeScheme(DISH::scheme_t new_scheme) {
+  if (m_scheme != new_scheme) {
+    LOG_PRINT("Changing scheme from %s to %s", DISH::scheme2name.at(m_scheme),
+              DISH::scheme2name.at(new_scheme));
+  }
+
   if (m_scheme == DISH::scheme_t::UNCOMPRESSED) {
     if (new_scheme == DISH::scheme_t::SCHEME1) {
       // Add all pointers to free list
@@ -75,8 +80,6 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       for (UInt8 p = 0; p < DISH::SCHEME2_DICT_SIZE; ++p) {
         m_free_ptrs.insert(p);
       }
-      // LOG_PRINT_ERROR(
-      //    "Invalid attempt to change compression scheme on-the-fly");
     }
   } else if (m_scheme == DISH::scheme_t::SCHEME2) {
     if (new_scheme == DISH::scheme_t::UNCOMPRESSED) {
@@ -91,8 +94,6 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       for (UInt8 p = 0; p < DISH::SCHEME1_DICT_SIZE; ++p) {
         m_free_ptrs.insert(p);
       }
-      // LOG_PRINT_ERROR(
-      //    "Invalid attempt to change compression scheme on-the-fly");
     }
   }
 }
@@ -186,48 +187,43 @@ bool BlockData::isScheme1Compressible(
     UInt32 block_id, UInt32 offset, const Byte* wr_data, UInt32 bytes,
     CacheCompressionCntlr* compress_cntlr) const {
 
-  // This function can be used with nullptr wr_data and 0 bytes combination to
-  // check the scheme 1 compressibility of the current, uncompressed line
-  assert((wr_data != nullptr) || (wr_data == nullptr && bytes == 0));
+  assert(wr_data != nullptr);
 
   // Handle trivial cases explicitly
   if (!isValid()) return false;
   if (!compress_cntlr->canCompress()) return false;
 
   /*
-   * Case 1: if the specified block is not valid, then the changes must either
-   * preserve the current line in entirety or write a full new line
+   * Case 1: if the specified block is not valid, then the changes must
+   * write a full new line
    *
    * Case 2: if the specified block is valid, any legal combination of offset
    * and bytes is possible
    */
-  assert((!isValid(block_id) && offset == 0 &&
-          (bytes == 0 || bytes == m_blocksize)) ||
+  assert((!isValid(block_id) && offset == 0 && bytes == m_blocksize) ||
          isValid(block_id));
 
   if (m_scheme == DISH::scheme_t::SCHEME1) {
-    if (wr_data != nullptr && bytes != 0) {
-      std::vector<UInt8> test_data(m_blocksize);
+    std::vector<UInt8> test_data(m_blocksize);
 
-      // Populate the test_data vector with the bytes from m_data and wr_data
-      std::copy_n(&m_data[block_id][0], offset, &test_data[0]);
-      std::copy_n(wr_data, bytes, &test_data[offset]);
-      std::copy_n(&m_data[block_id][offset + bytes],
-                  m_blocksize - (offset + bytes), &test_data[offset + bytes]);
+    // Populate the test_data vector with the bytes from m_data and wr_data
+    std::copy_n(&m_data[block_id][0], offset, &test_data[0]);
+    std::copy_n(wr_data, bytes, &test_data[offset]);
+    std::copy_n(&m_data[block_id][offset + bytes],
+                m_blocksize - (offset + bytes), &test_data[offset + bytes]);
 
-      // Cast to a 4-word type, which has the same granularity of cache blocks
-      // in DISH
-      const UInt32* test_data_chunks =
-          reinterpret_cast<const UInt32*>(&test_data[0]);
+    // Cast to a 4-word type, which has the same granularity of cache blocks
+    // in DISH
+    const UInt32* test_data_chunks =
+        reinterpret_cast<const UInt32*>(&test_data[0]);
 
-      UInt32 tmp_vacancies = m_free_ptrs.size();
-      for (UInt32 i = 0; i < m_chunks_per_block; ++i) {
-        if (!lookupDictEntry(test_data_chunks[i])) {
-          if (tmp_vacancies == 0) {
-            return false;  // Early stopping condition
-          } else {
-            --tmp_vacancies;
-          }
+    UInt32 tmp_vacancies = m_free_ptrs.size();
+    for (UInt32 i = 0; i < m_chunks_per_block; ++i) {
+      if (!lookupDictEntry(test_data_chunks[i])) {
+        if (tmp_vacancies == 0) {
+          return false;  // Early stopping condition
+        } else {
+          --tmp_vacancies;
         }
       }
     }
@@ -260,16 +256,14 @@ bool BlockData::isScheme1Compressible(
       }
     }
 
-    if (wr_data != nullptr && bytes != 0) {
-      // Cast to a 4-word type, which has the same granularity of cache blocks
-      // in DISH
-      const UInt32* wr_data_chunks = reinterpret_cast<const UInt32*>(wr_data);
+    // Cast to a 4-word type, which has the same granularity of cache blocks
+    // in DISH
+    const UInt32* wr_data_chunks = reinterpret_cast<const UInt32*>(wr_data);
 
-      // Add all chunks from wr_data_chunks line to set
-      UInt32 n_chunks = bytes / DISH::GRANULARITY_BYTES;
-      for (UInt32 i = 0; i < n_chunks; ++i) {
-        unique_chunks.insert(wr_data_chunks[i]);
-      }
+    // Add all chunks from wr_data_chunks line to set
+    UInt32 n_chunks = bytes / DISH::GRANULARITY_BYTES;
+    for (UInt32 i = 0; i < n_chunks; ++i) {
+      unique_chunks.insert(wr_data_chunks[i]);
     }
 
     return unique_chunks.size() <= DISH::SCHEME1_DICT_SIZE;
@@ -282,9 +276,7 @@ bool BlockData::isScheme2Compressible(
     UInt32 block_id, UInt32 offset, const Byte* wr_data, UInt32 bytes,
     CacheCompressionCntlr* compress_cntlr) const {
 
-  // This function can be used with nullptr wr_data and 0 bytes combination to
-  // check the scheme 1 compressibility of the current, uncompressed line
-  assert((wr_data != nullptr) || (wr_data == nullptr && bytes == 0));
+  assert(wr_data != nullptr);
 
   // Handle trivial cases explicitly
   if (!isValid()) return false;
@@ -293,14 +285,13 @@ bool BlockData::isScheme2Compressible(
   }
 
   /*
-   * Case 1: if the specified block is not valid, then the changes must either
-   * preserve the current line in entirety or write a full new line
+   * Case 1: if the specified block is not valid, then the changes must write
+   * a full new line
    *
    * Case 2: if the specified block is valid, any legal combination of offset
    * and bytes is possible
    */
-  assert((!isValid(block_id) && offset == 0 &&
-          (bytes == m_blocksize || bytes == 0)) ||
+  assert((!isValid(block_id) && offset == 0 && bytes == m_blocksize) ||
          isValid(block_id));
 
   if (m_scheme == DISH::scheme_t::SCHEME1) {
@@ -311,31 +302,29 @@ bool BlockData::isScheme2Compressible(
       return false;
     }
   } else if (m_scheme == DISH::scheme_t::SCHEME2) {
-    if (wr_data != nullptr && bytes != 0) {
-      std::vector<UInt8> test_data(m_blocksize);
+    std::vector<UInt8> test_data(m_blocksize);
 
-      // Populate the test_data vector with the bytes from m_data and wr_data
-      std::copy_n(&m_data[block_id][0], offset, &test_data[0]);
-      std::copy_n(wr_data, bytes, &test_data[offset]);
-      std::copy_n(&m_data[block_id][offset + bytes],
-                  m_blocksize - (offset + bytes), &test_data[offset + bytes]);
+    // Populate the test_data vector with the bytes from m_data and wr_data
+    std::copy_n(&m_data[block_id][0], offset, &test_data[0]);
+    std::copy_n(wr_data, bytes, &test_data[offset]);
+    std::copy_n(&m_data[block_id][offset + bytes],
+                m_blocksize - (offset + bytes), &test_data[offset + bytes]);
 
-      // Cast to a 4-word type, which has the same granularity of cache blocks
-      // in DISH
-      const UInt32* test_data_chunks =
-          reinterpret_cast<const UInt32*>(&test_data[0]);
+    // Cast to a 4-word type, which has the same granularity of cache blocks
+    // in DISH
+    const UInt32* test_data_chunks =
+        reinterpret_cast<const UInt32*>(&test_data[0]);
 
-      UInt32 tmp_vacancies = m_free_ptrs.size();
-      UInt32 n_chunks      = m_blocksize / DISH::GRANULARITY_BYTES;
-      for (UInt32 i = 0; i < n_chunks; ++i) {
-        UInt32 tmp = test_data_chunks[i] >> DISH::SCHEME2_OFFSET_BITS;
+    UInt32 tmp_vacancies = m_free_ptrs.size();
+    UInt32 n_chunks      = m_blocksize / DISH::GRANULARITY_BYTES;
+    for (UInt32 i = 0; i < n_chunks; ++i) {
+      UInt32 tmp = test_data_chunks[i] >> DISH::SCHEME2_OFFSET_BITS;
 
-        if (!lookupDictEntry(tmp)) {
-          if (tmp_vacancies == 0) {
-            return false;  // Early stopping condition
-          } else {
-            --tmp_vacancies;
-          }
+      if (!lookupDictEntry(tmp)) {
+        if (tmp_vacancies == 0) {
+          return false;  // Early stopping condition
+        } else {
+          --tmp_vacancies;
         }
       }
     }
@@ -361,17 +350,15 @@ bool BlockData::isScheme2Compressible(
       }
     }
 
-    if (wr_data != nullptr && bytes != 0) {
-      // Cast to a 4-word type, which has the same granularity of cache blocks
-      // in DISH
-      const UInt32* wr_data_chunks = reinterpret_cast<const UInt32*>(wr_data);
+    // Cast to a 4-word type, which has the same granularity of cache blocks
+    // in DISH
+    const UInt32* wr_data_chunks = reinterpret_cast<const UInt32*>(wr_data);
 
-      // Add all chunks from wr_data_chunks line to set
-      UInt32 n_chunks = bytes / DISH::GRANULARITY_BYTES;
-      for (UInt32 i = 0; i < n_chunks; ++i) {
-        UInt32 tmp = wr_data_chunks[i] >> DISH::SCHEME2_OFFSET_BITS;
-        unique_chunks.insert(tmp);
-      }
+    // Add all chunks from wr_data_chunks line to set
+    UInt32 n_chunks = bytes / DISH::GRANULARITY_BYTES;
+    for (UInt32 i = 0; i < n_chunks; ++i) {
+      UInt32 tmp = wr_data_chunks[i] >> DISH::SCHEME2_OFFSET_BITS;
+      unique_chunks.insert(tmp);
     }
 
     return unique_chunks.size() <= DISH::SCHEME2_DICT_SIZE;
@@ -381,6 +368,9 @@ bool BlockData::isScheme2Compressible(
 }
 
 void BlockData::compact() {
+  LOG_PRINT("Compacting BlockData in scheme %s",
+            DISH::scheme2name.at(m_scheme));
+
   if (!isValid()) return;
 
   switch (m_scheme) {
@@ -393,9 +383,9 @@ void BlockData::compact() {
       break;
 
     case DISH::scheme_t::UNCOMPRESSED:
-      LOG_PRINT_WARNING("Compaction called on an UNCOMPRESSED block");
+      // Do nothing
       break;
-    case DISH::scheme_t::INVALID:
+    default:
       assert(false);
   }
 }
@@ -472,13 +462,15 @@ void BlockData::compressScheme1(UInt32 block_id, UInt32 offset,
                                 const Byte* wr_data, UInt32 bytes,
                                 CacheCompressionCntlr* compress_cntlr) {
 
-  assert((wr_data != nullptr) || (wr_data == nullptr && bytes == 0));
-  assert(isValid());  // Cannot compress line from invalid state
+  LOG_PRINT(
+      "Compressing BlockData (%s) to %s\n"
+      "block_id: %u offset: %u wr_data: %p bytes: %u",
+      DISH::scheme2name.at(m_scheme),
+      DISH::scheme2name.at(DISH::scheme_t::SCHEME1), block_id, offset, wr_data,
+      bytes);
 
-  // Handle trivial case explicitly
-  if (wr_data == nullptr || bytes == 0) {
-    return;
-  }
+  assert(wr_data != nullptr);
+  assert(isValid());  // Cannot compress line from invalid state
 
   assert((!isValid(block_id) && offset == 0 && bytes == m_blocksize) ||
          isValid(block_id));
@@ -488,8 +480,8 @@ void BlockData::compressScheme1(UInt32 block_id, UInt32 offset,
 
   LOG_ASSERT_ERROR(
       isScheme1Compressible(block_id, offset, wr_data, bytes, compress_cntlr),
-      "Invalid attempt to compress %u bytes from offset %u into block %u",
-      bytes, offset, block_id);
+      "Invalid attempt to compress data using scheme %s",
+      DISH::scheme2name.at(DISH::scheme_t::SCHEME1));
 
   if (m_scheme == DISH::scheme_t::SCHEME1) {
     // Cast to a 4-word type, which has the same granularity of cache blocks in
@@ -547,13 +539,15 @@ void BlockData::compressScheme2(UInt32 block_id, UInt32 offset,
                                 const Byte* wr_data, UInt32 bytes,
                                 CacheCompressionCntlr* compress_cntlr) {
 
-  assert((wr_data != nullptr) || (wr_data == nullptr && bytes == 0));
-  assert(isValid());  // Cannot compress line from invalid state
+  LOG_PRINT(
+      "Compressing BlockData (%s) to %s\n"
+      "block_id: %u offset: %u wr_data: %p bytes: %u",
+      DISH::scheme2name.at(m_scheme),
+      DISH::scheme2name.at(DISH::scheme_t::SCHEME2), block_id, offset, wr_data,
+      bytes);
 
-  // Handle trivial case explicitly
-  if (wr_data == nullptr || bytes == 0) {
-    return;
-  }
+  assert(wr_data != nullptr);
+  assert(isValid());  // Cannot compress line from invalid state
 
   assert((!isValid(block_id) && offset == 0 && bytes == m_blocksize) ||
          isValid(block_id));
@@ -563,8 +557,8 @@ void BlockData::compressScheme2(UInt32 block_id, UInt32 offset,
 
   LOG_ASSERT_ERROR(
       isScheme2Compressible(block_id, offset, wr_data, bytes, compress_cntlr),
-      "Invalid attempt to compress %u bytes from offset %u into block %u",
-      bytes, offset, block_id);
+      "Invalid attempt to compress data using scheme %s",
+      DISH::scheme_t::SCHEME2);
 
   if (m_scheme == DISH::scheme_t::SCHEME1) {
     // TODO: OTF scheme switching
@@ -629,6 +623,7 @@ void BlockData::compressScheme2(UInt32 block_id, UInt32 offset,
 DISH::scheme_t BlockData::getSchemeForWrite(
     UInt32 block_id, UInt32 offset, const Byte* wr_data, UInt32 bytes,
     CacheCompressionCntlr* compress_cntlr) const {
+
   if (!isValid() || !m_valid[block_id]) {
     return DISH::scheme_t::INVALID;
   } else {
@@ -747,11 +742,13 @@ bool BlockData::canWriteBlockData(UInt32 block_id, UInt32 offset,
                                   const Byte* wr_data, UInt32 bytes,
                                   CacheCompressionCntlr* compress_cntlr) const {
 
-  assert(wr_data != nullptr);
+  assert((wr_data == nullptr && offset == 0 && bytes == 0) ||
+         (wr_data != nullptr));
 
-  if (!m_valid[block_id]) {
+  if (!m_valid[block_id])
     return false;
-  }
+  else if (wr_data == nullptr)
+    return true;
 
   DISH::scheme_t try_scheme =
       getSchemeForWrite(block_id, offset, wr_data, bytes, compress_cntlr);
@@ -763,29 +760,32 @@ void BlockData::writeBlockData(UInt32 block_id, UInt32 offset,
                                const Byte* wr_data, UInt32 bytes,
                                CacheCompressionCntlr* compress_cntlr) {
 
+  LOG_PRINT("Writing BlockData block_id: %u offset: %u wr_data: %p bytes: %u",
+            block_id, offset, wr_data, bytes);
+
   assert(wr_data != nullptr || (wr_data == nullptr && bytes == 0));
 
-  assert(canWriteBlockData(block_id, offset, wr_data, bytes, compress_cntlr));
+  if (wr_data != nullptr) {
+    // Query getSchemeForWrite to see if the block will cause OTF scheme change
+    DISH::scheme_t new_scheme =
+        getSchemeForWrite(block_id, offset, wr_data, bytes, compress_cntlr);
 
-  // Query getSchemeForWrite to see if the block will cause OTF scheme change
-  DISH::scheme_t new_scheme =
-      getSchemeForWrite(block_id, offset, wr_data, bytes, compress_cntlr);
+    switch (new_scheme) {
+      case DISH::scheme_t::UNCOMPRESSED:
+        std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
+        break;
 
-  switch (new_scheme) {
-    case DISH::scheme_t::UNCOMPRESSED:
-      std::copy_n(wr_data, bytes, &m_data[block_id][offset]);
-      break;
+      case DISH::scheme_t::SCHEME1:
+        compressScheme1(block_id, offset, wr_data, bytes, compress_cntlr);
+        break;
 
-    case DISH::scheme_t::SCHEME1:
-      compressScheme1(block_id, offset, wr_data, bytes, compress_cntlr);
-      break;
+      case DISH::scheme_t::SCHEME2:
+        compressScheme2(block_id, offset, wr_data, bytes, compress_cntlr);
+        break;
 
-    case DISH::scheme_t::SCHEME2:
-      compressScheme2(block_id, offset, wr_data, bytes, compress_cntlr);
-      break;
-
-    default:
-      LOG_PRINT_ERROR("Invalid attempt to insert line");
+      default:
+        LOG_PRINT_ERROR("Invalid attempt to insert line");
+    }
   }
 
   if (compress_cntlr->shouldPruneDISHEntries()) compact();
@@ -793,6 +793,9 @@ void BlockData::writeBlockData(UInt32 block_id, UInt32 offset,
 
 void BlockData::readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
                               Byte* rd_data) const {
+
+  LOG_PRINT("Reading BlockData block_id: %u offset: %u rd_data: %p bytes: %u",
+            block_id, offset, rd_data, bytes);
 
   assert(rd_data != nullptr || (rd_data == nullptr && bytes == 0));
 
@@ -805,50 +808,50 @@ void BlockData::readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
 }
 
 bool BlockData::canInsertBlockData(
-    UInt32 block_id, const Byte* wr_data,
+    UInt32 block_id, const Byte* ins_data,
     CacheCompressionCntlr* compress_cntlr) const {
 
-  assert(wr_data != nullptr);
-
-  if (m_valid[block_id]) {
+  if (m_valid[block_id])
     return false;
-  }
+  else if (ins_data == nullptr)
+    return true;
 
   DISH::scheme_t try_scheme =
-      getSchemeForInsertion(block_id, wr_data, compress_cntlr);
+      getSchemeForInsertion(block_id, ins_data, compress_cntlr);
 
   return try_scheme != DISH::scheme_t::INVALID;
 }
 
-void BlockData::insertBlockData(UInt32 block_id, const Byte* wr_data,
+void BlockData::insertBlockData(UInt32 block_id, const Byte* ins_data,
                                 CacheCompressionCntlr* compress_cntlr) {
 
-  assert(wr_data != nullptr);
-
-  assert(canWriteBlockData(block_id, 0, wr_data, m_blocksize, compress_cntlr));
+  LOG_PRINT("Inserting BlockData block_id: %u ins_data: %p", block_id,
+            ins_data);
 
   LOG_ASSERT_ERROR(!m_valid[block_id],
                    "Attempted to insert block %u on top of an existing one",
                    block_id);
 
-  DISH::scheme_t new_scheme =
-      getSchemeForInsertion(block_id, wr_data, compress_cntlr);
+  if (ins_data != nullptr) {
+    DISH::scheme_t new_scheme =
+        getSchemeForInsertion(block_id, ins_data, compress_cntlr);
 
-  switch (new_scheme) {
-    case DISH::scheme_t::UNCOMPRESSED:
-      std::copy_n(wr_data, m_blocksize, &m_data[block_id][0]);
-      break;
+    switch (new_scheme) {
+      case DISH::scheme_t::UNCOMPRESSED:
+        std::copy_n(ins_data, m_blocksize, &m_data[block_id][0]);
+        break;
 
-    case DISH::scheme_t::SCHEME1:
-      compressScheme1(block_id, 0, wr_data, m_blocksize, compress_cntlr);
-      break;
+      case DISH::scheme_t::SCHEME1:
+        compressScheme1(block_id, 0, ins_data, m_blocksize, compress_cntlr);
+        break;
 
-    case DISH::scheme_t::SCHEME2:
-      compressScheme2(block_id, 0, wr_data, m_blocksize, compress_cntlr);
-      break;
+      case DISH::scheme_t::SCHEME2:
+        compressScheme2(block_id, 0, ins_data, m_blocksize, compress_cntlr);
+        break;
 
-    default:
-      LOG_PRINT_ERROR("Invalid attempt to insert line");
+      default:
+        LOG_PRINT_ERROR("Invalid attempt to insert line");
+    }
   }
 
   m_valid[block_id] = true;
