@@ -825,12 +825,11 @@ bool BlockData::canInsertBlockData(
 void BlockData::insertBlockData(UInt32 block_id, const Byte* ins_data,
                                 CacheCompressionCntlr* compress_cntlr) {
 
-  LOG_PRINT("Inserting BlockData block_id: %u ins_data: %p", block_id,
-            ins_data);
+  LOG_PRINT("Inserting BlockData block_id: %u ins_data: %p m_scheme: %s m_valid: {%d%d%d%d}", 
+            block_id, ins_data, DISH::scheme2name.at(m_scheme), m_valid[0], m_valid[1], m_valid[2], m_valid[3]);
 
   LOG_ASSERT_ERROR(!m_valid[block_id],
-                   "Attempted to insert block %u on top of an existing one",
-                   block_id);
+                   "Attempted to insert block on top of an existing one");
 
   if (ins_data != nullptr) {
     DISH::scheme_t new_scheme =

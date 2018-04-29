@@ -20,14 +20,15 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
       m_num_hits(0),
       m_cache_type(cache_type),
       m_fault_injector(fault_injector),
-      m_compression_cntlr(new CacheCompressionCntlr(
+      m_compress_cntlr(new CacheCompressionCntlr(
           compressible, change_scheme_otf, prune_dish_entries)) {
 
-  LOG_PRINT("Cache created with num_sets: %u assoc: %u blocksize: %u", m_num_sets, m_associativity, m_blocksize);
+  LOG_PRINT("Cache (%s) created with num_sets: %u assoc: %u blocksize: %u", 
+            m_name.c_str(), m_num_sets, m_associativity, m_blocksize);
 
   m_set_info =
       CacheSet::createCacheSetInfo(name, cfgname, core_id, replacement_policy,
-                                   m_associativity, m_compression_cntlr.get());
+                                   m_associativity, m_compress_cntlr.get());
 
   // Populate m_sets with newly-constructed objects
   m_sets.reserve(m_num_sets);
@@ -36,7 +37,7 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
     // use move semantics to push the unique pointers into the vector
     m_sets.push_back(std::move(CacheSet::createCacheSet(
         cfgname, core_id, replacement_policy, m_cache_type, m_associativity,
-        m_blocksize, m_compression_cntlr.get(), this, m_set_info.get())));
+        m_blocksize, m_compress_cntlr.get(), this, m_set_info.get())));
   }
 
 #ifdef ENABLE_SET_USAGE_HIST
@@ -66,7 +67,7 @@ Lock& Cache::getSetLock(IntPtr addr) {
   return m_sets[set_index]->getLock();
 }
 
-bool Cache::isCompressible() { return m_compression_cntlr->canCompress(); }
+bool Cache::isCompressible() { return m_compress_cntlr->canCompress(); }
 UInt32 Cache::getSuperblockSize() { return SUPERBLOCK_SIZE; }
 
 bool Cache::invalidateSingleLine(IntPtr addr) {
@@ -100,18 +101,18 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
   if (access_type == LOAD) {
 
     LOG_PRINT(
-        "Cache accessing (LOAD) line addr: %lx tag: %lx set_index: %u "
+        "Cache (%s) accessing (LOAD) line addr: %lx tag: %lx set_index: %u "
         "block_id: %u "
         "offset: %u acc_data: %p",
-        addr, tag, set_index, block_id, offset, acc_data);
+        m_name.c_str(), addr, tag, set_index, block_id, offset, acc_data);
 
     set->readLine(way, block_id, offset, bytes, update_replacement, acc_data);
   } else {
     LOG_PRINT(
-        "Cache accessing (STORE) line addr: %lx tag: %lx set_index: %u "
+        "Cache (%s) accessing (STORE) line addr: %lx tag: %lx set_index: %u "
         "block_id: %u "
         "offset: %u acc_data: %p",
-        addr, tag, set_index, block_id, offset, acc_data);
+        m_name.c_str(), addr, tag, set_index, block_id, offset, acc_data);
 
     set->writeLine(way, block_id, offset, acc_data, bytes, update_replacement,
                    writebacks, cntlr);
@@ -131,8 +132,8 @@ void Cache::insertSingleLine(IntPtr addr, const Byte* ins_data,
   splitAddress(addr, &tag, nullptr, &set_index);
 
   LOG_PRINT(
-      "Cache inserting line addr: %lx tag: %lx set_index: %u ins_data: %p",
-      addr, tag, set_index, ins_data);
+      "Cache (%s) inserting line addr: %lx tag: %lx set_index: %u ins_data: %p",
+      m_name.c_str(), addr, tag, set_index, ins_data);
 
   CacheBlockInfoUPtr block_info = CacheBlockInfo::create(m_cache_type);
   block_info->setTag(tag);
@@ -152,8 +153,8 @@ CacheBlockInfo* Cache::peekSingleLine(IntPtr addr) {
   splitAddress(addr, &tag, nullptr, &set_index, &block_id);
 
   LOG_PRINT(
-      "Cache peeking line addr: %lx tag: %lx set_index: %u block_id: %u",
-      addr, tag, set_index, block_id);
+      "Cache (%s) peeking line addr: %lx tag: %lx set_index: %u block_id: %u",
+      m_name.c_str(), addr, tag, set_index, block_id);
 
   return m_sets[set_index]->find(tag, block_id);
 }

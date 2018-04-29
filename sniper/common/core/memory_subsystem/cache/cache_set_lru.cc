@@ -7,10 +7,10 @@
 // [Jaleel et al., MICRO'10]
 CacheSetLRU::CacheSetLRU(CacheBase::cache_t cache_type, UInt32 associativity,
                          UInt32 blocksize,
-                         CacheCompressionCntlr* compression_cntlr,
+                         CacheCompressionCntlr* compress_cntlr,
                          const Cache* parent_cache, CacheSetInfoLRU* set_info,
                          UInt8 num_attempts)
-    : CacheSet(cache_type, associativity, blocksize, compression_cntlr,
+    : CacheSet(cache_type, associativity, blocksize, compress_cntlr,
                parent_cache),
 
       m_num_attempts(num_attempts),

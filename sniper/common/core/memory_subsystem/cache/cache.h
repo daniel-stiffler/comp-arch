@@ -96,7 +96,7 @@ class Cache : public CacheBase {
   std::unique_ptr<CacheSetInfo> m_set_info;
 
   FaultInjector* m_fault_injector;
-  std::unique_ptr<CacheCompressionCntlr> m_compression_cntlr;
+  std::unique_ptr<CacheCompressionCntlr> m_compress_cntlr;
 
 #ifdef ENABLE_SET_USAGE_HIST
   std::vector<UInt64> m_set_usage_hist;

@@ -12,7 +12,7 @@
 std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     String cfgname, core_id_t core_id, String replacement_policy,
     CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
-    CacheCompressionCntlr* compression_cntlr, const Cache* parent_cache,
+    CacheCompressionCntlr* compress_cntlr, const Cache* parent_cache,
     CacheSetInfo* set_info) {
 
   CacheBase::ReplacementPolicy policy = parsePolicyType(replacement_policy);
@@ -22,14 +22,12 @@ std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     // Fall through
     case CacheBase::LRU_QBS: {
       CacheSetLRU* tmp = new CacheSetLRU(
-          cache_type, associativity, blocksize, compression_cntlr, parent_cache,
+          cache_type, associativity, blocksize, compress_cntlr, parent_cache,
           dynamic_cast<CacheSetInfoLRU*>(set_info),
           getNumQBSAttempts(policy, cfgname, core_id));
 
-      CacheSet* tmp_upcast = dynamic_cast<CacheSet*>(tmp);
-
-      return std::unique_ptr<CacheSet>(tmp_upcast);
-    } break;  // Not necessary
+      return std::unique_ptr<CacheSet>(tmp);
+    } break;
 
     default:
       LOG_PRINT_ERROR(
@@ -40,7 +38,7 @@ std::unique_ptr<CacheSet> CacheSet::createCacheSet(
 
 std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
     String name, String cfgname, core_id_t core_id, String replacement_policy,
-    UInt32 associativity, CacheCompressionCntlr* compression_cntlr) {
+    UInt32 associativity, CacheCompressionCntlr* compress_cntlr) {
 
   CacheBase::ReplacementPolicy policy = parsePolicyType(replacement_policy);
 
@@ -49,13 +47,11 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
     // Fall through
     case CacheBase::LRU_QBS: {
       CacheSetInfoLRU* tmp = new CacheSetInfoLRU(
-          name, cfgname, core_id, /*compression_cntlr,*/ associativity,
+          name, cfgname, core_id, associativity,
           getNumQBSAttempts(policy, cfgname, core_id));
 
-      CacheSetInfo* tmp_upcast = dynamic_cast<CacheSetInfo*>(tmp);
-
-      return std::unique_ptr<CacheSetInfo>(tmp_upcast);
-    } break;  // Not necessary
+      return std::unique_ptr<CacheSetInfo>(tmp);
+    } break; 
 
     default:
       LOG_PRINT_ERROR(
@@ -64,24 +60,13 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
 }
 
 CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
-                   UInt32 blocksize, CacheCompressionCntlr* compression_cntlr,
+                   UInt32 blocksize, CacheCompressionCntlr* compress_cntlr,
                    const Cache* parent_cache)
     : m_associativity(associativity),
       m_blocksize(blocksize),
-      m_compression_cntlr(compression_cntlr),
+      m_compress_cntlr(compress_cntlr),
       m_superblock_info_ways(associativity),
       m_parent_cache(parent_cache) {
-
-  for (auto& superblock_info : m_superblock_info_ways) {
-    for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-      CacheBlockInfoUPtr tmp_block_info = CacheBlockInfo::create(cache_type);
-
-      // Replace dummy object from initialization with one specialized to
-      // cache type
-      superblock_info.swapBlockInfo(i, tmp_block_info);
-      tmp_block_info.release();  // Explicitly destroy the dummy objects
-    }
-  }
 
   // Create the objects containing block data
   for (UInt32 i = 0; i < m_associativity; ++i) {
@@ -131,10 +116,10 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
   BlockData& super_data = m_data_ways[way];
 
   if (super_data.canWriteBlockData(block_id, offset, wr_data, bytes,
-                                   m_compression_cntlr)) {
+                                   m_compress_cntlr)) {
 
     super_data.writeBlockData(block_id, offset, wr_data, bytes,
-                              m_compression_cntlr);
+                              m_compress_cntlr);
 
     if (update_replacement) updateReplacementWay(way);
   } else {
@@ -149,7 +134,7 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
     // Current (modified) block data
     std::unique_ptr<Byte> mod_block_data(new Byte[m_blocksize]);
     super_data.evictBlockData(block_id, mod_block_data.get(),
-                              m_compression_cntlr);
+                              m_compress_cntlr);
 
     CacheBlockInfoUPtr mod_block_info =
         superblock_info.evictBlockInfo(block_id);
@@ -231,11 +216,11 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
     SuperblockInfo& merge_superblock_info = m_superblock_info_ways[i];
     BlockData& merge_data                 = m_data_ways[i];
 
-    // TODO: arbitrate between schemes, possibly using SuperblockInfo
     if (merge_superblock_info.canInsertBlockInfo(ins_supertag, ins_block_id,
-                                                 ins_block_info.get())) {
+                                                 ins_block_info.get()) &&
+        merge_data.canInsertBlockData(ins_block_id, ins_data, m_compress_cntlr)) {
 
-      merge_data.insertBlockData(ins_block_id, ins_data, m_compression_cntlr);
+      merge_data.insertBlockData(ins_block_id, ins_data, m_compress_cntlr);
       merge_superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
                                             std::move(ins_block_info));
 
@@ -247,6 +232,10 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
       return;
     }
   }
+
+  LOG_PRINT(
+      "Inserting CacheSet causes evictions tag: %lx ins_data: %p",
+      ins_block_info->getTag(), ins_data, writebacks->size());
 
   /*
    * This replacement strategy does not take into account the fact that cache
@@ -276,7 +265,7 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
       IntPtr evict_addr =
           m_parent_cache->tagToAddress(evict_block_info->getTag());
 
-      super_data.evictBlockData(i, evict_block_data.get(), m_compression_cntlr);
+      super_data.evictBlockData(i, evict_block_data.get(), m_compress_cntlr);
 
       // Allocate and construct a new WritebackTuple in the vector
       writebacks->emplace_back(evict_addr, std::move(evict_block_info),
@@ -285,7 +274,7 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   }
   assert(!superblock_info.isValid());  // Ensure the superblock is now empty
 
-  super_data.insertBlockData(ins_block_id, ins_data, m_compression_cntlr);
+  super_data.insertBlockData(ins_block_id, ins_data, m_compress_cntlr);
   superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
                                   std::move(ins_block_info));
 

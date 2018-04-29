@@ -86,9 +86,9 @@ public:
   void readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
                   Byte* rd_data) const;
 
-  bool canInsertBlockData(UInt32 block_id, const Byte* wr_data,
+  bool canInsertBlockData(UInt32 block_id, const Byte* ins_data,
                           CacheCompressionCntlr* compress_cntlr) const;
-  void insertBlockData(UInt32 block_id, const Byte* wr_data,
+  void insertBlockData(UInt32 block_id, const Byte* ins_data,
                        CacheCompressionCntlr* compress_cntlr);
 
   void evictBlockData(UInt32 block_id, Byte* evict_data,

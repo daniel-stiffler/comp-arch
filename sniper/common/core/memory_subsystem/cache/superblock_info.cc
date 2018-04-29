@@ -14,13 +14,7 @@ SuperblockInfo::~SuperblockInfo() {
 CacheBlockInfo* SuperblockInfo::peekBlock(UInt32 block_id) const {
   assert(block_id < SUPERBLOCK_SIZE);
 
-  CacheBlockInfo* block_info = m_block_infos[block_id].get();
-
-  if (block_info->isValid()) {
-    return block_info;
-  } else {
-    return nullptr;
-  }
+  return m_block_infos[block_id].get();
 }
 
 bool SuperblockInfo::canInsertBlockInfo(
@@ -30,6 +24,10 @@ bool SuperblockInfo::canInsertBlockInfo(
   (void)ins_block_info;  // TODO
 
   assert(block_id < SUPERBLOCK_SIZE);
+
+  LOG_PRINT("SuperblockInfo checking supertag: %lx block_id: %u ptr: %p valid: {%d%d%d%d}",
+            supertag, block_id, ins_block_info,
+            isValid(0), isValid(1), isValid(2), isValid(3));
 
   if (!isValid()) {
     return true;
@@ -42,7 +40,7 @@ bool SuperblockInfo::canInsertBlockInfo(
 
 bool SuperblockInfo::isValid() const {
   for (const auto& e : m_block_infos) {
-    if (e->isValid()) return true;
+    if (e.get() != nullptr) return true;
   }
 
   return false;
@@ -51,7 +49,7 @@ bool SuperblockInfo::isValid() const {
 bool SuperblockInfo::isValid(UInt32 block_id) const {
   assert(block_id < SUPERBLOCK_SIZE);
 
-  return m_block_infos[block_id]->isValid();
+  return (m_block_infos[block_id].get() != nullptr);
 }
 
 void SuperblockInfo::swapBlockInfo(UInt32 block_id,
@@ -69,6 +67,8 @@ CacheBlockInfoUPtr SuperblockInfo::evictBlockInfo(UInt32 block_id) {
   assert(block_id < SUPERBLOCK_SIZE);
 
   CacheBlockInfoUPtr evict_block = std::move(m_block_infos[block_id]);
+
+  if (!isValid()) m_supertag = TAG_UNUSED;
 
   return evict_block;
 }
@@ -94,7 +94,7 @@ bool SuperblockInfo::compareTags(IntPtr tag, UInt32* block_id) const {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     const CacheBlockInfo* block_info = m_block_infos[i].get();
 
-    if (block_info->isValid() && tag == block_info->getTag()) {
+    if (block_info != nullptr && tag == block_info->getTag()) {
       if (block_id != nullptr) *block_id = i;
 
       return true;
@@ -108,7 +108,7 @@ bool SuperblockInfo::isValidReplacement() const {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     const CacheBlockInfo* block_info = m_block_infos[i].get();
 
-    if (block_info->isValid() &&
+    if (block_info != nullptr &&
         block_info->getCState() == CacheState::SHARED_UPGRADING) {
       return false;
     }
@@ -122,8 +122,8 @@ bool SuperblockInfo::invalidate(IntPtr tag) {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     CacheBlockInfo* block_info = m_block_infos[i].get();
 
-    if (block_info->isValid() && tag == block_info->getTag()) {
-      block_info->invalidate();
+    if (block_info != nullptr && tag == block_info->getTag()) {
+      m_block_infos[i].reset(nullptr);
       LOG_PRINT(
           "SuperblockInfo invalidating CacheBlockInfo tag: %lx block_id: %u "
           "block_info: %p",
