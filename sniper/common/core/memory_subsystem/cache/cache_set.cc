@@ -209,7 +209,7 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
                           CacheCntlr* cntlr) {
 
   LOG_PRINT(
-      "BEGIN Inserting CacheSet tag: %lu ins_data: %p, %u writebacks scheduled",
+      "BEGIN Inserting CacheSet tag: %lx ins_data: %p, %u writebacks scheduled",
       ins_block_info->getTag(), ins_data, writebacks->size());
 
   assert(ins_block_info.get() != nullptr);

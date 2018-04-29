@@ -90,12 +90,13 @@ void SuperblockInfo::insertBlockInfo(IntPtr supertag, UInt32 block_id,
   m_block_infos[block_id] = std::move(ins_block_info);
 }
 
-bool SuperblockInfo::compareTags(UInt32 tag, UInt32* block_id) const {
+bool SuperblockInfo::compareTags(IntPtr tag, UInt32* block_id) const {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     const CacheBlockInfo* block_info = m_block_infos[i].get();
 
     if (block_info->isValid() && tag == block_info->getTag()) {
       if (block_id != nullptr) *block_id = i;
+
       return true;
     }
   }

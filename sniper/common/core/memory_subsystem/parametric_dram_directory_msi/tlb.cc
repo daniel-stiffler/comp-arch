@@ -29,14 +29,13 @@ TLB::TLB(String name, String cfgname, core_id_t core_id, UInt32 num_entries,
 }
 
 bool TLB::lookup(IntPtr address, SubsecondTime now, bool allocate_on_miss) {
-  IntPtr page_addr = address & SIM_PAGE_MASK;
+  IntPtr vpn = address >> SIM_PAGE_SHIFT;
 
-  WritebackLines writebacks;
-  writebacks.reserve(1);
+  LOG_PRINT("TLB accessing line with address: %lx vpn: %lx", address, vpn);
+  CacheBlockInfo* tlb_block_info = m_cache.accessSingleLine(vpn, Cache::LOAD, nullptr, 0, now,
+                                      true, nullptr);
 
-  LOG_PRINT("TLB accessing line with page_addr: %lx", page_addr);
-  bool hit = m_cache.accessSingleLine(page_addr, Cache::LOAD, nullptr, 0, now,
-                                      true, &writebacks);
+  bool hit = (tlb_block_info != nullptr);
 
   m_access++;
 
@@ -53,14 +52,6 @@ bool TLB::lookup(IntPtr address, SubsecondTime now, bool allocate_on_miss) {
 
     if (allocate_on_miss) {
       allocate(address, now);
-    }
-
-    // Use next level as a victim cache
-    if (!writebacks.empty() && m_next_level) {
-      for (const auto& e : writebacks) {
-        IntPtr evict_addr = std::get<0>(e);
-        m_next_level->allocate(evict_addr, now);
-      }
     }
 
     return hit;

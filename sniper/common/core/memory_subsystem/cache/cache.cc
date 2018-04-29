@@ -23,6 +23,8 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
       m_compression_cntlr(new CacheCompressionCntlr(
           compressible, change_scheme_otf, prune_dish_entries)) {
 
+  LOG_PRINT("Cache created with num_sets: %u assoc: %u blocksize: %u", m_num_sets, m_associativity, m_blocksize);
+
   m_set_info =
       CacheSet::createCacheSetInfo(name, cfgname, core_id, replacement_policy,
                                    m_associativity, m_compression_cntlr.get());
