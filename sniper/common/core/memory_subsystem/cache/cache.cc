@@ -96,20 +96,19 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
   if (block_info == nullptr) return nullptr;
 
   if (access_type == LOAD) {
-
     LOG_PRINT(
         "Cache accessing (LOAD) line addr: %lx tag: %lx set_index: %u "
         "block_id: %u "
-        "offset: %u acc_data: %p",
-        addr, tag, set_index, block_id, offset, acc_data);
+        "offset: %u acc_data: %p bytes: %u",
+        addr, tag, set_index, block_id, offset, acc_data, bytes);
 
     set->readLine(way, block_id, offset, bytes, update_replacement, acc_data);
   } else {
     LOG_PRINT(
         "Cache accessing (STORE) line addr: %lx tag: %lx set_index: %u "
         "block_id: %u "
-        "offset: %u acc_data: %p",
-        addr, tag, set_index, block_id, offset, acc_data);
+        "offset: %u acc_data: %p bytes: %u",
+        addr, tag, set_index, block_id, offset, acc_data, bytes);
 
     set->writeLine(way, block_id, offset, acc_data, bytes, update_replacement,
                    writebacks, cntlr);

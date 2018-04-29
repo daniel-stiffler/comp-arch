@@ -106,8 +106,10 @@ void CacheSet::readLine(UInt32 way, UInt32 block_id, UInt32 offset,
   const SuperblockInfo& superblock_info = m_superblock_info_ways[way];
   assert(superblock_info.isValid(block_id));
 
-  const BlockData& super_data = m_data_ways[way];
-  super_data.readBlockData(block_id, offset, bytes, rd_data);
+  if (rd_data != nullptr) {
+    const BlockData& super_data = m_data_ways[way];
+    super_data.readBlockData(block_id, offset, bytes, rd_data);
+  }
 
   if (update_replacement) updateReplacementWay(way);
 }
