@@ -176,19 +176,30 @@ CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32 block_id, UInt32* way) const {
 
       if (way != nullptr) *way = tmp_way;
 
-      return superblock_info.peekBlock(tmp_block_id);
+      CacheBlockInfo* peek_block_info = superblock_info.peekBlock(block_id);
+      LOG_PRINT("CacheSet HIT tag: %lx block_id: %u way: %u ptr: %p", tag,
+                block_id, way, peek_block_info);
+
+      return peek_block_info;
     }
   }
+
+  LOG_PRINT("CacheSet MISS tag: %lx block_id: %u way: %u", tag, block_id, way);
 
   return nullptr;
 }
 
 bool CacheSet::invalidate(IntPtr tag) {
-  LOG_PRINT("Invalidating CacheSet tag: %lx", tag);
-
   for (auto& superblock_info : m_superblock_info_ways) {
-    if (superblock_info.invalidate(tag)) return true;
+    if (superblock_info.invalidate(tag)) {
+      LOG_PRINT("CacheSet invalidating tag: %lx", tag);
+
+      return true;
+    }
   }
+
+  LOG_PRINT("CacheSet attempted to invalidate tag: %lx but it was not resident",
+            tag);
 
   return false;
 }
@@ -202,7 +213,6 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
       ins_block_info->getTag(), ins_data, writebacks->size());
 
   assert(ins_block_info.get() != nullptr);
-  // assert(ins_data != nullptr);  // Possible to insert null lines (TLB)
   assert(writebacks != nullptr);
 
   IntPtr ins_addr = m_parent_cache->tagToAddress(ins_block_info->getTag());
