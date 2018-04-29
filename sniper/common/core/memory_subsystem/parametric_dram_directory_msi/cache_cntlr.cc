@@ -1366,18 +1366,37 @@ bool CacheCntlr::operationPermissibleinCache(
 void CacheCntlr::accessCache(Core::mem_op_t mem_op_type, IntPtr ca_address,
                              UInt32 offset, Byte* data_buf, UInt32 data_length,
                              bool update_replacement) {
+
+  // TODO: check backtrace for accuracy
+  // Core::accessMemoryFast -> MemoryManagerBase::coreInitiateMemoryAccessFast
+  // -> ParametricDramDirectoryMSI::MemoryManager::coreInitiateMemoryAccess ->
+  // ParametricDramDirectoryMSI::CacheCntlr::processMemOpFromCore ->
+  // ParametricDramDirectoryMSI::CacheCntlr::accessCache
+  //
+  //
+  // Memory accesses made using the Fast Nehalem controller pass nullptr
+  // data_buf down through the hierarchy with data_length that corresponds to a
+  // full block.  This is done to ensure that usage bits get updated
+  // appropriately, but it does not respect the Cache interface anymore
+  UInt32 adj_data_length;
+  if (data_buf == nullptr && data_length == getCacheBlockSize()) {
+    adj_data_length = 0;
+  } else {
+    adj_data_length = data_length;
+  }
+
   switch (mem_op_type) {
     case Core::READ:
     case Core::READ_EX:
       m_master->m_cache->accessSingleLine(
-          ca_address + offset, Cache::LOAD, data_buf, data_length,
+          ca_address + offset, Cache::LOAD, data_buf, adj_data_length,
           getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD),
           update_replacement);
       break;
 
     case Core::WRITE:
       m_master->m_cache->accessSingleLine(
-          ca_address + offset, Cache::STORE, data_buf, data_length,
+          ca_address + offset, Cache::STORE, data_buf, adj_data_length,
           getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD),
           update_replacement);
       // Write-through cache - Write the next level cache also
@@ -1386,7 +1405,7 @@ void CacheCntlr::accessCache(Core::mem_op_t mem_op_type, IntPtr ca_address,
                          "Writethrough enabled on last-level cache !?");
         MYLOG("writethrough start");
         m_next_cache_cntlr->writeCacheBlock(ca_address, offset, data_buf,
-                                            data_length,
+                                            adj_data_length,
                                             ShmemPerfModel::_USER_THREAD);
         MYLOG("writethrough done");
       }
