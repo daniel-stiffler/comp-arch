@@ -1394,11 +1394,23 @@ void CacheCntlr::accessCache(Core::mem_op_t mem_op_type, IntPtr ca_address,
           update_replacement);
       break;
 
-    case Core::WRITE:
-      m_master->m_cache->accessSingleLine(
+    case Core::WRITE: {
+      WritebackLines writebacks;
+      if (m_master->m_cache->isCompressible()) {
+        // Preemptively reserve enough memory in the writebacks vector for the
+        // entire Superblock to be evicted
+        UInt32 superblock_size = m_master->m_cache->getSuperblockSize();
+        writebacks.reserve(superblock_size);
+      } else {
+        // Uncompressed caches can have at most one writeback
+        writebacks.reserve(1);
+      }
+
+      CacheBlockInfo* wr_block_info = m_master->m_cache->accessSingleLine(
           ca_address + offset, Cache::STORE, data_buf, adj_data_length,
           getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD),
-          update_replacement);
+          update_replacement, &writebacks, this);
+
       // Write-through cache - Write the next level cache also
       if (m_cache_writethrough) {
         LOG_ASSERT_ERROR(m_next_cache_cntlr,
@@ -1409,7 +1421,10 @@ void CacheCntlr::accessCache(Core::mem_op_t mem_op_type, IntPtr ca_address,
                                             ShmemPerfModel::_USER_THREAD);
         MYLOG("writethrough done");
       }
-      break;
+
+      handleWritebacks(wr_block_info, ShmemPerfModel::_USER_THREAD,
+                       &writebacks);
+    } break;
 
     default:
       LOG_PRINT_ERROR("Unsupported Mem Op Type: %u", mem_op_type);
@@ -1520,202 +1535,14 @@ SharedCacheBlockInfo* CacheCntlr::insertCacheBlock(
                                               address);
   }
 
-  LOG_PRINT("CacheCntlr::insertCacheBlock l%d local (insert) operations done",
-            m_mem_component);
+  LOG_PRINT("CacheCntlr (%s core_id: %d) local insertion operations done @%lx",
+            MemComponentString(m_mem_component), m_core_id, address);
 
   // Handle the evictions if there were any
-  if (!writebacks.empty()) {
-    LOG_PRINT("CacheCntlr::insertCacheBlock l%d handling %d evictions",
-              writebacks.size());
-    for (const auto& wb : writebacks) {
-      IntPtr evict_addr                      = std::get<0>(wb);
-      const CacheBlockInfo* evict_block_info = std::get<1>(wb).get();
-      Byte* evict_block_data                 = std::get<2>(wb).get();
-      CacheState::cstate_t evict_cstate      = evict_block_info->getCState();
+  handleWritebacks(cache_block_info, thread_num, &writebacks);
 
-      LOG_PRINT("CacheCntlr::insertCacheBlock is evicting data @%lx (state %c)",
-                evict_addr, CStateString(evict_cstate));
-
-      // Use the efficiency callbacks if they are enabled and the block is
-      // tracked at the LLC
-      if (!m_next_cache_cntlr &&
-          !evict_block_info->hasOption(CacheBlockInfo::WARMUP) &&
-          Sim()->getConfig()->hasCacheEfficiencyCallbacks()) {
-
-        Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_evict(
-            false, evict_block_info->getOwner(), cache_block_info->getOwner(),
-            evict_block_info->getUsage(),
-            getCacheBlockSize() >> CacheBlockInfo::BitsUsedOffset);
-      }
-
-      {  // BEGIN locked region
-        ScopedLock sl(getLock());
-        transition(evict_addr, Transition::EVICT, evict_cstate,
-                   CacheState::INVALID);
-
-        ++stats.evict[evict_cstate];
-
-        // Line was prefetched, but is evicted without ever being used
-        if (evict_block_info->hasOption(CacheBlockInfo::PREFETCH)) {
-          ++stats.evict_prefetch;
-        }
-
-        if (evict_block_info->hasOption(CacheBlockInfo::WARMUP)) {
-          ++stats.evict_warmup;
-        }
-      }  // END locked region
-
-      LOG_PRINT(
-          "CacheCntlr::insertCacheBlock eviction @%lx now propagating to "
-          "previous levels ",
-          evict_addr);
-
-      /*
-       * Propagate the eviction to the previous levels.
-       * They will write modified data back to our evicting buffer when needed
-       */
-      if (!m_master->m_prev_cache_cntlrs.empty()) {
-        // BEGIN locked region
-        ScopedLock sl(getLock());
-
-        // Set the evicting buffer for other threads
-        m_master->m_evicting_address = evict_addr;
-        m_master->m_evicting_buf     = evict_block_data;
-
-        // Determine the maximum latency for all the previous cache controllers
-        SubsecondTime latency = SubsecondTime::Zero();
-        for (auto it = m_master->m_prev_cache_cntlrs.begin();
-             it != m_master->m_prev_cache_cntlrs.end(); it++) {
-
-          SubsecondTime new_latency;
-          bool dummy;
-          std::tie(new_latency, dummy) = (*it)->updateCacheBlock(
-              evict_addr, CacheState::INVALID, Transition::BACK_INVAL, nullptr,
-              thread_num);
-
-          latency = getMax<SubsecondTime>(latency, new_latency);
-        }
-
-        getMemoryManager()->incrElapsedTime(latency, thread_num);
-        atomic_add_subsecondtime(stats.snoop_latency, latency);
-
-        // Reset the evicting buffer for other threads
-        m_master->m_evicting_address = 0;
-        m_master->m_evicting_buf     = nullptr;
-        // END locked region
-      }
-
-      // Now properly get rid of the evicted line
-
-      if (m_perfect) {
-        // Nothing to do in this case
-      } else if (!m_coherent) {
-        /*
-         * Don't notify the next level, it may have already evicted the line
-         * itself and won't like our notifyPrevLevelEvict Make sure the line
-         * wasn't modified though (unless we're writethrough), else data would
-         * have been lost
-         */
-        if (!m_cache_writethrough)
-          LOG_ASSERT_ERROR(evict_cstate != CacheState::MODIFIED,
-                           "Non-coherent cache is throwing away dirty data");
-      } else if (m_next_cache_cntlr) {
-        if (m_cache_writethrough) {
-          /*
-           * If we're a write-through cache the new data is in the next level
-           * already
-           */
-        } else {
-          /*
-           * Send dirty block to next level cache. Probably we have an
-           * evict/victim buffer to do that when we're idle, so ignore timing
-           */
-          if (evict_cstate == CacheState::MODIFIED)
-            m_next_cache_cntlr->writeCacheBlock(evict_addr, 0, evict_block_data,
-                                                getCacheBlockSize(),
-                                                thread_num);
-        }
-
-        m_next_cache_cntlr->notifyPrevLevelEvict(m_core_id_master,
-                                                 m_mem_component, evict_addr);
-      } else if (m_master->m_dram_cntlr) {
-        if (evict_cstate == CacheState::MODIFIED) {
-          SubsecondTime t_now =
-              getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
-
-          // Delay if all evict buffers are full
-          if (m_master->m_dram_outstanding_writebacks) {
-            // BEGIN locked region
-            ScopedLock sl(getLock());
-            SubsecondTime t_issue =
-                m_master->m_dram_outstanding_writebacks->getStartTime(t_now);
-            getMemoryManager()->incrElapsedTime(t_issue - t_now,
-                                                ShmemPerfModel::_USER_THREAD);
-            // END locked region
-          }
-
-          // Access DRAM
-          SubsecondTime dram_latency;
-          HitWhere::where_t hit_where;
-          std::tie<HitWhere::where_t, SubsecondTime>(hit_where, dram_latency) =
-              accessDRAM(Core::WRITE, evict_addr, false, evict_block_data);
-
-          // Occupy evict buffer
-          if (m_master->m_dram_outstanding_writebacks) {
-            // BEGIN locked region
-            ScopedLock sl(getLock());
-            m_master->m_dram_outstanding_writebacks->getCompletionTime(
-                t_now, dram_latency);
-            // END locked region
-          }
-        }
-      } else {
-        // Send dirty block to directory instead of another cache or DRAM
-        // controller
-        UInt32 home_node_id = getHome(evict_addr);
-        if (evict_cstate == CacheState::MODIFIED) {
-          // Block was dirty, so send the data as well as the FLUSH operation
-          LOG_PRINT("CacheCntlr::insertCacheBlock eviction FLUSH @%lx",
-                    evict_addr);
-
-          getMemoryManager()->sendMsg(
-              PrL1PrL2DramDirectoryMSI::ShmemMsg::FLUSH_REP,
-              MemComponent::LAST_LEVEL_CACHE, MemComponent::TAG_DIR,
-              m_core_id /* requester */, home_node_id /* receiver */,
-              evict_addr, evict_block_data, getCacheBlockSize(),
-              HitWhere::UNKNOWN, nullptr, thread_num);
-        } else {
-          // Block was clean, so just need to INV
-          LOG_PRINT("CacheCntlr::insertCacheBlock eviction INV @%lx",
-                    evict_addr);
-
-          LOG_ASSERT_ERROR(
-              evict_cstate == CacheState::SHARED ||
-                  evict_cstate == CacheState::EXCLUSIVE,
-              "Evicted block must be either S or E @%lx but we saw %c",
-              evict_addr, CStateString(evict_cstate));
-
-          getMemoryManager()->sendMsg(
-              PrL1PrL2DramDirectoryMSI::ShmemMsg::INV_REP,
-              MemComponent::LAST_LEVEL_CACHE, MemComponent::TAG_DIR,
-              m_core_id /* requester */, home_node_id /* receiver */,
-              evict_addr, nullptr, 0, HitWhere::UNKNOWN, nullptr, thread_num);
-        }
-      }
-
-      // Check that the eviction was processed correctly
-      CacheState::cstate_t final_cstate = getCacheState(evict_addr);
-      LOG_ASSERT_ERROR(
-          final_cstate == CacheState::INVALID,
-          "Evicted address did not become invalid, now in state %c",
-          CStateString(final_cstate));
-    }
-
-    LOG_PRINT("CacheCntlr::insertCacheBlock l%d completed %d evictions",
-              m_mem_component, writebacks.size());
-  }
-
-  LOG_PRINT("CacheCntlr::insertCacheBlock l%d done", m_mem_component);
+  LOG_PRINT("CacheCntlr (%s core_id: %d) global insertion operations done @%lx",
+            MemComponentString(m_mem_component), m_core_id, address);
 
   return cache_block_info;
 }
@@ -1899,15 +1726,29 @@ void CacheCntlr::writeCacheBlock(IntPtr address, UInt32 offset, Byte* data_buf,
     if (data_buf)
       memcpy(m_master->m_evicting_buf + offset, data_buf, data_length);
   } else {
-    __attribute__((unused)) SharedCacheBlockInfo* cache_block_info =
-        (SharedCacheBlockInfo*)m_master->m_cache->accessSingleLine(
-            address + offset, Cache::STORE, data_buf, data_length,
-            getShmemPerfModel()->getElapsedTime(thread_num), false);
+    WritebackLines writebacks;
+    if (m_master->m_cache->isCompressible()) {
+      // Preemptively reserve enough memory in the writebacks vector for the
+      // entire Superblock to be evicted
+      UInt32 superblock_size = m_master->m_cache->getSuperblockSize();
+      writebacks.reserve(superblock_size);
+    } else {
+      // Uncompressed caches can have at most one writeback
+      writebacks.reserve(1);
+    }
+
+    CacheBlockInfo* wr_block_info = m_master->m_cache->accessSingleLine(
+        address + offset, Cache::STORE, data_buf, data_length,
+        getShmemPerfModel()->getElapsedTime(thread_num), false, &writebacks,
+        this);
+
     LOG_ASSERT_ERROR(
-        cache_block_info,
+        wr_block_info,
         "writethrough expected a hit at next-level cache but got miss");
-    LOG_ASSERT_ERROR(cache_block_info->getCState() == CacheState::MODIFIED,
+    LOG_ASSERT_ERROR(wr_block_info->getCState() == CacheState::MODIFIED,
                      "Got writeback for non-MODIFIED line");
+
+    handleWritebacks(wr_block_info, thread_num, &writebacks);
   }
 
   if (m_cache_writethrough) {
@@ -1915,6 +1756,212 @@ void CacheCntlr::writeCacheBlock(IntPtr address, UInt32 offset, Byte* data_buf,
     m_next_cache_cntlr->writeCacheBlock(address, offset, data_buf, data_length,
                                         thread_num);
     releaseStackLock(true);
+  }
+}
+
+void CacheCntlr::handleWritebacks(const CacheBlockInfo* ins_block_info,
+                                  ShmemPerfModel::Thread_t thread_num,
+                                  WritebackLines* writebacks) {
+
+  assert(writebacks != nullptr);
+
+  if (!writebacks->empty()) {
+    LOG_PRINT("CacheCntlr (%s core_id: %d) handling %u evictions",
+              MemComponentString(m_mem_component), m_core_id,
+              writebacks->size());
+
+    for (const auto& wb : *writebacks) {
+      IntPtr evict_addr                      = std::get<0>(wb);
+      const CacheBlockInfo* evict_block_info = std::get<1>(wb).get();
+      Byte* evict_block_data                 = std::get<2>(wb).get();
+      CacheState::cstate_t evict_cstate      = evict_block_info->getCState();
+
+      LOG_PRINT("CacheCntlr (%s core_id: %d) is evicting data @%lx (state: %c)",
+                MemComponentString(m_mem_component), m_core_id, evict_addr,
+                CStateString(evict_cstate));
+
+      // Use the efficiency callbacks if they are enabled and the block is
+      // tracked at the LLC
+      if (!m_next_cache_cntlr &&
+          !evict_block_info->hasOption(CacheBlockInfo::WARMUP) &&
+          Sim()->getConfig()->hasCacheEfficiencyCallbacks()) {
+
+        Sim()->getConfig()->getCacheEfficiencyCallbacks().call_notify_evict(
+            false, evict_block_info->getOwner(), ins_block_info->getOwner(),
+            evict_block_info->getUsage(),
+            getCacheBlockSize() >> CacheBlockInfo::BitsUsedOffset);
+      }
+
+      {  // BEGIN locked region
+        ScopedLock sl(getLock());
+        transition(evict_addr, Transition::EVICT, evict_cstate,
+                   CacheState::INVALID);
+
+        ++stats.evict[evict_cstate];
+
+        // Line was prefetched, but is evicted without ever being used
+        if (evict_block_info->hasOption(CacheBlockInfo::PREFETCH)) {
+          ++stats.evict_prefetch;
+        }
+
+        if (evict_block_info->hasOption(CacheBlockInfo::WARMUP)) {
+          ++stats.evict_warmup;
+        }
+      }  // END locked region
+
+      LOG_PRINT(
+          "CacheCntlr (%s core_id: %d) eviction @%lx now propagating to "
+          "previous levels",
+          MemComponentString(m_mem_component), m_core_id, evict_addr);
+
+      /*
+       * Propagate the eviction to the previous levels.
+       * They will write modified data back to our evicting buffer when needed
+       */
+      if (!m_master->m_prev_cache_cntlrs.empty()) {
+        // BEGIN locked region
+        ScopedLock sl(getLock());
+
+        // Set the evicting buffer for other threads
+        m_master->m_evicting_address = evict_addr;
+        m_master->m_evicting_buf     = evict_block_data;
+
+        // Determine the maximum latency for all the previous cache controllers
+        SubsecondTime latency = SubsecondTime::Zero();
+        for (auto it = m_master->m_prev_cache_cntlrs.begin();
+             it != m_master->m_prev_cache_cntlrs.end(); it++) {
+
+          SubsecondTime new_latency;
+          bool dummy;
+          std::tie(new_latency, dummy) = (*it)->updateCacheBlock(
+              evict_addr, CacheState::INVALID, Transition::BACK_INVAL, nullptr,
+              thread_num);
+
+          latency = getMax<SubsecondTime>(latency, new_latency);
+        }
+
+        getMemoryManager()->incrElapsedTime(latency, thread_num);
+        atomic_add_subsecondtime(stats.snoop_latency, latency);
+
+        // Reset the evicting buffer for other threads
+        m_master->m_evicting_address = 0;
+        m_master->m_evicting_buf     = nullptr;
+        // END locked region
+      }
+
+      // Now properly get rid of the evicted line
+
+      LOG_PRINT(
+          "CacheCntlr (%s core_id: %d) eviction @%lx now properly getting rid "
+          "of data",
+          MemComponentString(m_mem_component), m_core_id, evict_addr);
+
+      if (m_perfect) {
+        // Nothing to do in this case
+      } else if (!m_coherent) {
+        /*
+         * Don't notify the next level, it may have already evicted the line
+         * itself and won't like our notifyPrevLevelEvict Make sure the line
+         * wasn't modified though (unless we're writethrough), else data would
+         * have been lost
+         */
+        if (!m_cache_writethrough)
+          LOG_ASSERT_ERROR(evict_cstate != CacheState::MODIFIED,
+                           "Non-coherent cache is throwing away dirty data");
+      } else if (m_next_cache_cntlr) {
+        if (m_cache_writethrough) {
+          /*
+           * If we're a write-through cache the new data is in the next level
+           * already
+           */
+        } else {
+          /*
+           * Send dirty block to next level cache. Probably we have an
+           * evict/victim buffer to do that when we're idle, so ignore timing
+           */
+          if (evict_cstate == CacheState::MODIFIED)
+            m_next_cache_cntlr->writeCacheBlock(evict_addr, 0, evict_block_data,
+                                                getCacheBlockSize(),
+                                                thread_num);
+        }
+
+        m_next_cache_cntlr->notifyPrevLevelEvict(m_core_id_master,
+                                                 m_mem_component, evict_addr);
+      } else if (m_master->m_dram_cntlr) {
+        if (evict_cstate == CacheState::MODIFIED) {
+          SubsecondTime t_now =
+              getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
+
+          // Delay if all evict buffers are full
+          if (m_master->m_dram_outstanding_writebacks) {
+            // BEGIN locked region
+            ScopedLock sl(getLock());
+            SubsecondTime t_issue =
+                m_master->m_dram_outstanding_writebacks->getStartTime(t_now);
+            getMemoryManager()->incrElapsedTime(t_issue - t_now,
+                                                ShmemPerfModel::_USER_THREAD);
+            // END locked region
+          }
+
+          // Access DRAM
+          SubsecondTime dram_latency;
+          HitWhere::where_t hit_where;
+          std::tie<HitWhere::where_t, SubsecondTime>(hit_where, dram_latency) =
+              accessDRAM(Core::WRITE, evict_addr, false, evict_block_data);
+
+          // Occupy evict buffer
+          if (m_master->m_dram_outstanding_writebacks) {
+            // BEGIN locked region
+            ScopedLock sl(getLock());
+            m_master->m_dram_outstanding_writebacks->getCompletionTime(
+                t_now, dram_latency);
+            // END locked region
+          }
+        }
+      } else {
+        // Send dirty block to directory instead of another cache or DRAM
+        // controller
+        UInt32 home_node_id = getHome(evict_addr);
+        if (evict_cstate == CacheState::MODIFIED) {
+          // Block was dirty, so send the data as well as the FLUSH operation
+          LOG_PRINT("CacheCntlr::insertCacheBlock eviction FLUSH @%lx",
+                    evict_addr);
+
+          getMemoryManager()->sendMsg(
+              PrL1PrL2DramDirectoryMSI::ShmemMsg::FLUSH_REP,
+              MemComponent::LAST_LEVEL_CACHE, MemComponent::TAG_DIR,
+              m_core_id /* requester */, home_node_id /* receiver */,
+              evict_addr, evict_block_data, getCacheBlockSize(),
+              HitWhere::UNKNOWN, nullptr, thread_num);
+        } else {
+          // Block was clean, so just need to INV
+          LOG_PRINT("CacheCntlr::insertCacheBlock eviction INV @%lx",
+                    evict_addr);
+
+          LOG_ASSERT_ERROR(
+              evict_cstate == CacheState::SHARED ||
+                  evict_cstate == CacheState::EXCLUSIVE,
+              "Evicted block must be either S or E @%lx but we saw %c",
+              evict_addr, CStateString(evict_cstate));
+
+          getMemoryManager()->sendMsg(
+              PrL1PrL2DramDirectoryMSI::ShmemMsg::INV_REP,
+              MemComponent::LAST_LEVEL_CACHE, MemComponent::TAG_DIR,
+              m_core_id /* requester */, home_node_id /* receiver */,
+              evict_addr, nullptr, 0, HitWhere::UNKNOWN, nullptr, thread_num);
+        }
+      }
+
+      // Check that the eviction was processed correctly
+      CacheState::cstate_t final_cstate = getCacheState(evict_addr);
+      LOG_ASSERT_ERROR(
+          final_cstate == CacheState::INVALID,
+          "Evicted address did not become invalid, now in state %c",
+          CStateString(final_cstate));
+    }
+    LOG_PRINT("CacheCntlr (%s core_id: %d) completed %u total evictions",
+              MemComponentString(m_mem_component), m_core_id,
+              writebacks->size());
   }
 }
 

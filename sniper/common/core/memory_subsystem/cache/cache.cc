@@ -23,7 +23,7 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
       m_compress_cntlr(new CacheCompressionCntlr(
           compressible, change_scheme_otf, prune_dish_entries)) {
 
-  LOG_PRINT("Cache (%s) created with num_sets: %u assoc: %u blocksize: %u", 
+  LOG_PRINT("Cache (%s) created with num_sets: %u assoc: %u blocksize: %u",
             m_name.c_str(), m_num_sets, m_associativity, m_blocksize);
 
   m_set_info =
@@ -99,7 +99,6 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
   if (block_info == nullptr) return nullptr;
 
   if (access_type == LOAD) {
-
     LOG_PRINT(
         "Cache (%s) accessing (LOAD) line addr: %lx tag: %lx set_index: %u "
         "block_id: %u "
@@ -108,6 +107,9 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
 
     set->readLine(way, block_id, offset, bytes, update_replacement, acc_data);
   } else {
+    assert(writebacks != nullptr);
+    assert(cntlr != nullptr);
+
     LOG_PRINT(
         "Cache (%s) accessing (STORE) line addr: %lx tag: %lx set_index: %u "
         "block_id: %u "
