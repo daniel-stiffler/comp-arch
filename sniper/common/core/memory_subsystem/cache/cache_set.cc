@@ -120,7 +120,7 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
       way, block_id, offset, wr_data, bytes, writebacks->size());
 
   assert(offset + bytes <= m_blocksize);
-  assert((wr_data != nullptr) || (wr_data == nullptr && bytes == 0));
+  assert((wr_data != nullptr) || bytes == 0);
 
   SuperblockInfo& superblock_info = m_superblock_info_ways[way];
   assert(superblock_info.isValid(block_id));
