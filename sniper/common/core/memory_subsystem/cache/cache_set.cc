@@ -68,6 +68,8 @@ CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
       m_superblock_info_ways(associativity),
       m_parent_cache(parent_cache) {
 
+  // Uncomment to initialize Superblocks with INVALID CacheBlockInfo
+  /*
   for (auto& e : m_superblock_info_ways) {
     for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
       CacheBlockInfoUPtr inout_block_info = CacheBlockInfo::create(cache_type);
@@ -78,7 +80,7 @@ CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
     }
     LOG_PRINT("CacheSet created %s", e.dump().c_str());
   }
-
+  */
 
   // Create the objects containing block data
   for (UInt32 i = 0; i < m_associativity; ++i) {
@@ -208,10 +210,14 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
       "BEGIN Inserting CacheSet tag: %lx ins_data: %p, %u writebacks scheduled",
       ins_block_info->getTag(), ins_data, writebacks->size());
 
-  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[0], m_superblock_info_ways[0].dump().c_str());
-  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[1], m_superblock_info_ways[1].dump().c_str());
-  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[2], m_superblock_info_ways[2].dump().c_str());
-  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[3], m_superblock_info_ways[3].dump().c_str());
+  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[0],
+            m_superblock_info_ways[0].dump().c_str());
+  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[1],
+            m_superblock_info_ways[1].dump().c_str());
+  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[2],
+            m_superblock_info_ways[2].dump().c_str());
+  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[3],
+            m_superblock_info_ways[3].dump().c_str());
 
   assert(ins_block_info.get() != nullptr);
   assert(writebacks != nullptr);
@@ -246,7 +252,8 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
           "merged lines",
           ins_supertag, ins_block_id, i);
 
-      LOG_PRINT("CacheSet inserted ins_supertag: %lx into %s", ins_supertag, merge_superblock_info.dump().c_str());
+      LOG_PRINT("CacheSet inserted ins_supertag: %lx into %s", ins_supertag,
+                merge_superblock_info.dump().c_str());
 
       return;
     }

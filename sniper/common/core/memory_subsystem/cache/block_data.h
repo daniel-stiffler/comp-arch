@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -98,4 +99,6 @@ class BlockData {
                       CacheCompressionCntlr* compress_cntlr);
   void invalidateBlockData(UInt32 block_id,
                            CacheCompressionCntlr* compress_cntlr);
+
+  std::string dump() const;
 };
