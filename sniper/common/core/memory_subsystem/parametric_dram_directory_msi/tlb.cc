@@ -12,8 +12,8 @@ TLB::TLB(String name, String cfgname, core_id_t core_id, UInt32 num_entries,
     : m_size(num_entries),
       m_associativity(associativity),
       m_cache(name + "_cache", cfgname, core_id, num_entries / associativity,
-              associativity, 0,  // Tag storage only
-              false,             // No TLB compression
+              associativity, 1 /* Must not be 0 for address splitting */,
+              false /* TLB cannot be compressed */,
               "lru", CacheBase::PR_L1_CACHE),
       m_next_level(next_level),
       m_access(0),
@@ -58,13 +58,13 @@ bool TLB::lookup(IntPtr address, SubsecondTime now, bool allocate_on_miss) {
   }
 }
 
-void TLB::allocate(IntPtr tlb_addr, SubsecondTime now) {
-  IntPtr page_addr = tlb_addr & SIM_PAGE_MASK;
+void TLB::allocate(IntPtr address, SubsecondTime now) {
+  IntPtr vpn = address >> SIM_PAGE_SHIFT;
 
   WritebackLines writebacks;
   writebacks.reserve(1);
 
-  m_cache.insertSingleLine(page_addr, nullptr, now, &writebacks);
+  m_cache.insertSingleLine(vpn, nullptr, now, &writebacks);
 
   // Use next level as a victim cache
   if (!writebacks.empty() && m_next_level) {

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cassert>
+#include <string>
 
 #include "cache_block_info.h"
 #include "compress_utils.h"
@@ -32,4 +33,6 @@ class SuperblockInfo {
   bool compareTags(IntPtr tag, UInt32* block_id = nullptr) const;
 
   bool isValidReplacement() const;
+
+  std::string dump() const;
 };

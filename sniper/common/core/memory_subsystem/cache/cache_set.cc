@@ -76,7 +76,9 @@ CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
 
       inout_block_info.reset(nullptr);
     }
+    LOG_PRINT("CacheSet created %s", e.dump().c_str());
   }
+
 
   // Create the objects containing block data
   for (UInt32 i = 0; i < m_associativity; ++i) {
@@ -172,13 +174,13 @@ CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32 block_id, UInt32* way) const {
 
       CacheBlockInfo* peek_block_info = superblock_info.peekBlock(block_id);
       LOG_PRINT("CacheSet HIT tag: %lx block_id: %u way: %u ptr: %p", tag,
-                block_id, way, peek_block_info);
+                block_id, tmp_way, peek_block_info);
 
       return peek_block_info;
     }
   }
 
-  LOG_PRINT("CacheSet MISS tag: %lx block_id: %u way: %u", tag, block_id, way);
+  LOG_PRINT("CacheSet MISS tag: %lx block_id: %u", tag, block_id);
 
   return nullptr;
 }
@@ -205,6 +207,11 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   LOG_PRINT(
       "BEGIN Inserting CacheSet tag: %lx ins_data: %p, %u writebacks scheduled",
       ins_block_info->getTag(), ins_data, writebacks->size());
+
+  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[0], m_superblock_info_ways[0].dump().c_str());
+  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[1], m_superblock_info_ways[1].dump().c_str());
+  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[2], m_superblock_info_ways[2].dump().c_str());
+  LOG_PRINT("CacheSet @%p %s", &m_superblock_info_ways[3], m_superblock_info_ways[3].dump().c_str());
 
   assert(ins_block_info.get() != nullptr);
   assert(writebacks != nullptr);
@@ -239,11 +246,13 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
           "merged lines",
           ins_supertag, ins_block_id, i);
 
+      LOG_PRINT("CacheSet inserted ins_supertag: %lx into %s", ins_supertag, merge_superblock_info.dump().c_str());
+
       return;
     }
   }
 
-  LOG_PRINT("Inserting CacheSet causes evictions tag: %lx ins_data: %p",
+  LOG_PRINT("CacheSet inserting causes evictions tag: %lx ins_data: %p",
             ins_block_info->getTag(), ins_data, writebacks->size());
 
   /*

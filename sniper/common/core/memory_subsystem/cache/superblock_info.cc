@@ -26,9 +26,9 @@ bool SuperblockInfo::canInsertBlockInfo(
   assert(block_id < SUPERBLOCK_SIZE);
 
   LOG_PRINT(
-      "SuperblockInfo checking supertag: %lx block_id: %u ptr: %p valid: "
+      "SuperblockInfo checking m_supertag: %lx supertag: %lx block_id: %u ptr: %p valid: "
       "{%d%d%d%d}",
-      supertag, block_id, ins_block_info, isValid(0), isValid(1), isValid(2),
+      m_supertag, supertag, block_id, ins_block_info, isValid(0), isValid(1), isValid(2),
       isValid(3));
 
   if (!isValid()) {
@@ -141,4 +141,25 @@ void SuperblockInfo::invalidateBlockInfo(IntPtr tag, UInt32 block_id) {
 
   LOG_PRINT("SuperblockInfo invalidating CacheBlockInfo tag: %lx block_id: %u ",
             tag, block_id);
+
+  if (!isValid()) m_supertag = TAG_UNUSED;
+}
+
+std::string SuperblockInfo::dump() const {
+  std::stringstream info_ss;
+
+  info_ss << "SuperblockInfo(" << reinterpret_cast<void *>(m_supertag) 
+          << " valid: " << isValid() << ")->m_block_infos{";
+
+  for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
+    const CacheBlockInfoUPtr& tmp_block_info = m_block_infos[i];
+    info_ss << "(" << tmp_block_info.get() << " tag: " << reinterpret_cast<void *>(tmp_block_info->getTag())
+            << " valid: " << tmp_block_info->isValid();
+
+    info_ss << ") ";
+  }
+
+  info_ss << "}";
+
+  return info_ss.str();
 }
