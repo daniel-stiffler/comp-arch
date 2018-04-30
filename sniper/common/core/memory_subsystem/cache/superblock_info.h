@@ -27,9 +27,9 @@ class SuperblockInfo {
   CacheBlockInfoUPtr evictBlockInfo(UInt32 block_id);
   void insertBlockInfo(IntPtr supertag, UInt32 block_id,
                        CacheBlockInfoUPtr ins_block_info);
+  void  invalidateBlockInfo(IntPtr inv_tag, UInt32 block_id);
 
   bool compareTags(IntPtr tag, UInt32* block_id = nullptr) const;
 
   bool isValidReplacement() const;
-  bool invalidate(IntPtr tag);
 };

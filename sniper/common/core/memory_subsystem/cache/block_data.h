@@ -49,6 +49,7 @@ class BlockData {
   bool isCompressible(UInt32 block_id, UInt32 offset, const Byte* wr_data,
                       UInt32 bytes, DISH::scheme_t try_scheme,
                       CacheCompressionCntlr* compress_cntlr) const;
+
  private:
   bool isScheme1Compressible(UInt32 block_id, UInt32 offset,
                              const Byte* wr_data, UInt32 bytes,
@@ -57,7 +58,7 @@ class BlockData {
                              const Byte* wr_data, UInt32 bytes,
                              CacheCompressionCntlr* compress_cntlr) const;
 
-private:
+ private:
   void compact();
   void compactScheme1();
   void compactScheme2();
@@ -74,17 +75,19 @@ private:
                                    const Byte* wr_data, UInt32 bytes,
                                    CacheCompressionCntlr* compress_cntlr) const;
 
-  DISH::scheme_t getSchemeForInsertion(UInt32 block_id, const Byte* wr_data,
-                                       CacheCompressionCntlr* compress_cntlr) const;
+  DISH::scheme_t getSchemeForInsertion(
+      UInt32 block_id, const Byte* wr_data,
+      CacheCompressionCntlr* compress_cntlr) const;
 
-public:
+ public:
   bool canWriteBlockData(UInt32 block_id, UInt32 offset, const Byte* wr_data,
-                     UInt32 bytes, CacheCompressionCntlr* compress_cntlr) const;
+                         UInt32 bytes,
+                         CacheCompressionCntlr* compress_cntlr) const;
   void writeBlockData(UInt32 block_id, UInt32 offset, const Byte* wr_data,
-                UInt32 bytes, CacheCompressionCntlr* compress_cntlr);
+                      UInt32 bytes, CacheCompressionCntlr* compress_cntlr);
 
   void readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
-                  Byte* rd_data) const;
+                     Byte* rd_data) const;
 
   bool canInsertBlockData(UInt32 block_id, const Byte* ins_data,
                           CacheCompressionCntlr* compress_cntlr) const;
@@ -93,4 +96,6 @@ public:
 
   void evictBlockData(UInt32 block_id, Byte* evict_data,
                       CacheCompressionCntlr* compress_cntlr);
+  void invalidateBlockData(UInt32 block_id,
+                           CacheCompressionCntlr* compress_cntlr);
 };

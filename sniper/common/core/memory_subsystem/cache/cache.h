@@ -119,7 +119,7 @@ class Cache : public CacheBase {
   bool isCompressible();
   UInt32 getSuperblockSize();
 
-  bool invalidateSingleLine(IntPtr addr);
+  void invalidateSingleLine(IntPtr addr);
   CacheBlockInfo* accessSingleLine(IntPtr addr, access_t access_type,
                                    Byte* acc_data, UInt32 bytes,
                                    SubsecondTime now, bool update_replacement,

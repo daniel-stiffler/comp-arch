@@ -70,12 +70,13 @@ Lock& Cache::getSetLock(IntPtr addr) {
 bool Cache::isCompressible() { return m_compress_cntlr->canCompress(); }
 UInt32 Cache::getSuperblockSize() { return SUPERBLOCK_SIZE; }
 
-bool Cache::invalidateSingleLine(IntPtr addr) {
+void Cache::invalidateSingleLine(IntPtr addr) {
   IntPtr tag;
   UInt32 set_index;
-  splitAddress(addr, &tag, nullptr, &set_index);
+  UInt32 block_id;
+  splitAddress(addr, &tag, nullptr, &set_index, &block_id);
 
-  return m_sets[set_index]->invalidate(tag);
+  m_sets[set_index]->invalidate(tag, block_id);
 }
 
 CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,

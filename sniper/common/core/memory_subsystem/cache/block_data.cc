@@ -825,8 +825,11 @@ bool BlockData::canInsertBlockData(
 void BlockData::insertBlockData(UInt32 block_id, const Byte* ins_data,
                                 CacheCompressionCntlr* compress_cntlr) {
 
-  LOG_PRINT("Inserting BlockData block_id: %u ins_data: %p m_scheme: %s m_valid: {%d%d%d%d}", 
-            block_id, ins_data, DISH::scheme2name.at(m_scheme), m_valid[0], m_valid[1], m_valid[2], m_valid[3]);
+  LOG_PRINT(
+      "Inserting BlockData block_id: %u ins_data: %p m_scheme: %s m_valid: "
+      "{%d%d%d%d}",
+      block_id, ins_data, DISH::scheme2name.at(m_scheme), m_valid[0],
+      m_valid[1], m_valid[2], m_valid[3]);
 
   LOG_ASSERT_ERROR(!m_valid[block_id],
                    "Attempted to insert block on top of an existing one");
@@ -860,12 +863,12 @@ void BlockData::insertBlockData(UInt32 block_id, const Byte* ins_data,
 void BlockData::evictBlockData(UInt32 block_id, Byte* evict_data,
                                CacheCompressionCntlr* compress_cntlr) {
 
-  assert(evict_data != nullptr);
-
   LOG_ASSERT_ERROR(m_valid[block_id], "Attempted to evict an invalid block %u",
                    block_id);
 
-  std::copy_n(&m_data[block_id][0], m_blocksize, evict_data);
+  if (evict_data != nullptr) {
+    std::copy_n(&m_data[block_id][0], m_blocksize, evict_data);
+  }
 
   m_valid[block_id] = false;
   std::fill_n(&m_data[block_id][0], m_blocksize, 0);
@@ -877,5 +880,22 @@ void BlockData::evictBlockData(UInt32 block_id, Byte* evict_data,
     changeScheme(DISH::scheme_t::UNCOMPRESSED);
   } else if (compress_cntlr->shouldPruneDISHEntries()) {
     compact();
+  }
+}
+
+void BlockData::invalidateBlockData(UInt32 block_id,
+                               CacheCompressionCntlr* compress_cntlr) {
+
+  LOG_ASSERT_ERROR(m_valid[block_id], "Attempted to evict an invalid block %u",
+                   block_id);
+
+  m_valid[block_id] = false;
+  std::fill_n(&m_data[block_id][0], m_blocksize, 0);
+
+  // Check to see if this was the last block in the superblock.  If it was,
+  // mark it as uncompressed for future operations
+  if (!isValid()) {
+    compress_cntlr->evict(m_scheme);
+    changeScheme(DISH::scheme_t::UNCOMPRESSED);
   }
 }

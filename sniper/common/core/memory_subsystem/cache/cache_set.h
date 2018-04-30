@@ -71,7 +71,7 @@ class CacheSet {
                  WritebackLines* writebacks, CacheCntlr* cntlr = nullptr);
   CacheBlockInfo* find(IntPtr tag, UInt32 block_id,
                        UInt32* way = nullptr) const;
-  bool invalidate(IntPtr tag);
+  void invalidate(IntPtr tag, UInt32 block_info);
   void insertLine(CacheBlockInfoUPtr ins_block_info, const Byte* ins_data,
                   WritebackLines* writebacks, CacheCntlr* cntlr = nullptr);
 

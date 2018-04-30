@@ -25,9 +25,11 @@ bool SuperblockInfo::canInsertBlockInfo(
 
   assert(block_id < SUPERBLOCK_SIZE);
 
-  LOG_PRINT("SuperblockInfo checking supertag: %lx block_id: %u ptr: %p valid: {%d%d%d%d}",
-            supertag, block_id, ins_block_info,
-            isValid(0), isValid(1), isValid(2), isValid(3));
+  LOG_PRINT(
+      "SuperblockInfo checking supertag: %lx block_id: %u ptr: %p valid: "
+      "{%d%d%d%d}",
+      supertag, block_id, ins_block_info, isValid(0), isValid(1), isValid(2),
+      isValid(3));
 
   if (!isValid()) {
     return true;
@@ -117,21 +119,17 @@ bool SuperblockInfo::isValidReplacement() const {
   return true;
 }
 
-bool SuperblockInfo::invalidate(IntPtr tag) {
+void SuperblockInfo::invalidateBlockInfo(IntPtr tag, UInt32 block_id) {
+  CacheBlockInfoUPtr& inv_block_info = m_block_infos[block_id];
 
-  for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-    CacheBlockInfo* block_info = m_block_infos[i].get();
+  IntPtr inv_tag = inv_block_info->getTag();
+  LOG_ASSERT_ERROR(
+      tag == inv_tag,
+      "SuperblockInfo attempting invalidation but tags did not match %lx %lx",
+      tag, inv_tag);
 
-    if (block_info != nullptr && tag == block_info->getTag()) {
-      m_block_infos[i].reset(nullptr);
-      LOG_PRINT(
-          "SuperblockInfo invalidating CacheBlockInfo tag: %lx block_id: %u "
-          "block_info: %p",
-          tag, i, block_info);
+  inv_block_info.reset(nullptr);
 
-      return true;
-    }
-  }
-
-  return false;
+  LOG_PRINT("SuperblockInfo invalidating CacheBlockInfo tag: %lx block_id: %u ",
+            tag, block_id);
 }

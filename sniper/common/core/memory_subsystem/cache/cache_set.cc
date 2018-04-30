@@ -46,12 +46,12 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
     case CacheBase::LRU:
     // Fall through
     case CacheBase::LRU_QBS: {
-      CacheSetInfoLRU* tmp = new CacheSetInfoLRU(
-          name, cfgname, core_id, associativity,
-          getNumQBSAttempts(policy, cfgname, core_id));
+      CacheSetInfoLRU* tmp =
+          new CacheSetInfoLRU(name, cfgname, core_id, associativity,
+                              getNumQBSAttempts(policy, cfgname, core_id));
 
       return std::unique_ptr<CacheSetInfo>(tmp);
-    } break; 
+    } break;
 
     default:
       LOG_PRINT_ERROR(
@@ -133,8 +133,7 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
 
     // Current (modified) block data
     std::unique_ptr<Byte> mod_block_data(new Byte[m_blocksize]);
-    super_data.evictBlockData(block_id, mod_block_data.get(),
-                              m_compress_cntlr);
+    super_data.evictBlockData(block_id, mod_block_data.get(), m_compress_cntlr);
 
     CacheBlockInfoUPtr mod_block_info =
         superblock_info.evictBlockInfo(block_id);
@@ -174,19 +173,19 @@ CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32 block_id, UInt32* way) const {
   return nullptr;
 }
 
-bool CacheSet::invalidate(IntPtr tag) {
-  for (auto& superblock_info : m_superblock_info_ways) {
-    if (superblock_info.invalidate(tag)) {
-      LOG_PRINT("CacheSet invalidating tag: %lx", tag);
+void CacheSet::invalidate(IntPtr tag, UInt32 block_id) {
+  UInt32 inv_way;
+  CacheBlockInfo* inv_block_info = find(tag, block_id, &inv_way);
 
-      return true;
-    }
+  if (inv_block_info != nullptr) {
+    m_superblock_info_ways[inv_way].invalidateBlockInfo(tag, block_id);
+    m_data_ways[inv_way].invalidateBlockData(block_id, m_compress_cntlr);
+  } else {
+    LOG_PRINT_WARNING(
+        "CacheSet attempted to invalidate tag: %lx block_id: %u but no lines "
+        "were touched",
+        tag, block_id);
   }
-
-  LOG_PRINT("CacheSet attempted to invalidate tag: %lx but it was not resident",
-            tag);
-
-  return false;
 }
 
 void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
@@ -218,7 +217,8 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
 
     if (merge_superblock_info.canInsertBlockInfo(ins_supertag, ins_block_id,
                                                  ins_block_info.get()) &&
-        merge_data.canInsertBlockData(ins_block_id, ins_data, m_compress_cntlr)) {
+        merge_data.canInsertBlockData(ins_block_id, ins_data,
+                                      m_compress_cntlr)) {
 
       merge_data.insertBlockData(ins_block_id, ins_data, m_compress_cntlr);
       merge_superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
@@ -233,9 +233,8 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
     }
   }
 
-  LOG_PRINT(
-      "Inserting CacheSet causes evictions tag: %lx ins_data: %p",
-      ins_block_info->getTag(), ins_data, writebacks->size());
+  LOG_PRINT("Inserting CacheSet causes evictions tag: %lx ins_data: %p",
+            ins_block_info->getTag(), ins_data, writebacks->size());
 
   /*
    * This replacement strategy does not take into account the fact that cache
