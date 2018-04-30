@@ -42,7 +42,7 @@ bool SuperblockInfo::canInsertBlockInfo(
 
 bool SuperblockInfo::isValid() const {
   for (const auto& e : m_block_infos) {
-    if (e->isValid()) return true;
+    if (e && e->isValid()) return true;
   }
 
   return false;
@@ -51,7 +51,7 @@ bool SuperblockInfo::isValid() const {
 bool SuperblockInfo::isValid(UInt32 block_id) const {
   assert(block_id < SUPERBLOCK_SIZE);
 
-  return m_block_infos[block_id]->isValid();
+  return m_block_infos[block_id] && m_block_infos[block_id]->isValid();
 }
 
 void SuperblockInfo::swapBlockInfo(UInt32 block_id,
@@ -96,7 +96,7 @@ bool SuperblockInfo::compareTags(IntPtr tag, UInt32* block_id) const {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     const CacheBlockInfo* block_info = m_block_infos[i].get();
 
-    if (block_info->isValid() && tag == block_info->getTag()) {
+    if (block_info && block_info->isValid() && tag == block_info->getTag()) {
       if (block_id != nullptr) *block_id = i;
 
       return true;
@@ -110,7 +110,7 @@ bool SuperblockInfo::isValidReplacement() const {
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     const CacheBlockInfo* block_info = m_block_infos[i].get();
 
-    if (block_info->isValid() &&
+    if (block_info && block_info->isValid() &&
         block_info->getCState() == CacheState::SHARED_UPGRADING) {
       return false;
     }
@@ -153,8 +153,8 @@ std::string SuperblockInfo::dump() const {
 
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
     const CacheBlockInfoUPtr& tmp_block_info = m_block_infos[i];
-    info_ss << "(" << tmp_block_info.get() << " tag: " << reinterpret_cast<void *>(tmp_block_info->getTag())
-            << " valid: " << tmp_block_info->isValid();
+    info_ss << "(" << tmp_block_info.get() << " tag: " << reinterpret_cast<void *>(tmp_block_info?tmp_block_info->getTag():-1)
+            << " valid: " << (tmp_block_info?tmp_block_info->isValid():false);
 
     info_ss << ") ";
   }
