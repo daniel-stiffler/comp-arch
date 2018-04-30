@@ -85,7 +85,7 @@ UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
 void CacheSetLRU::updateReplacementWay(UInt32 accessed_way) {
   // Subtract the iterators to get the priority
   UInt32 prev_priority =
-      std::distance(m_lru_places[accessed_way], m_lru_priorities.begin());
+      std::distance(m_lru_priorities.begin(), m_lru_places[accessed_way]);
 
   m_set_info->increment(prev_priority);
   moveToMRU(accessed_way);
