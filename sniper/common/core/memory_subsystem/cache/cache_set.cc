@@ -68,6 +68,16 @@ CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
       m_superblock_info_ways(associativity),
       m_parent_cache(parent_cache) {
 
+  for (auto& e : m_superblock_info_ways) {
+    for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
+      CacheBlockInfoUPtr inout_block_info = CacheBlockInfo::create(cache_type);
+
+      e.swapBlockInfo(i, inout_block_info);
+
+      inout_block_info.reset(nullptr);
+    }
+  }
+
   // Create the objects containing block data
   for (UInt32 i = 0; i < m_associativity; ++i) {
     m_data_ways.emplace_back(m_blocksize);
