@@ -342,7 +342,7 @@ bool BlockData::isScheme2Compressible(
     // only consider the dictionary entries that it would generate
     if (uncompressed_block_id != block_id) {
       const UInt32* data_uncompressed_chunks =
-          reinterpret_cast<const UInt32*>(m_data[uncompressed_block_id][0]);
+          reinterpret_cast<const UInt32*>(&m_data[uncompressed_block_id][0]);
 
       // Add all chunks from currently uncompressed line to set
       for (UInt32 i = 0; i < m_chunks_per_block; ++i) {
