@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <sstream>
+#include <iostream>
 
 #include "cache.h"
 #include "fixed_types.h"
@@ -305,9 +306,7 @@ bool BlockData::isScheme2Compressible(
 
   // Handle trivial cases explicitly
   if (!isValid()) return false;
-  if (!compress_cntlr->canCompress()) {
-    return false;
-  }
+  if (!compress_cntlr->canCompress()) return false;
 
   /*
    * Case 1: if the specified block is not valid, then the changes must write
@@ -776,6 +775,13 @@ DISH::scheme_t BlockData::getSchemeForInsertion(
     UInt32 block_id, const Byte* wr_data,
     CacheCompressionCntlr* compress_cntlr) const {
 
+  if (wr_data != nullptr) {
+    LOG_PRINT("BlockData(%p) getting scheme for insertion (%d) size: %u block_id: %u wr_data: %s",
+              this, compress_cntlr->canCompress(), m_blocksize / DISH::GRANULARITY_BYTES, block_id, 
+              printChunks(reinterpret_cast<const UInt32*>(wr_data), 
+                         m_blocksize / DISH::GRANULARITY_BYTES).c_str());
+  } 
+
   if (compress_cntlr->canCompress()) {
     if (isValid()) {
       if (m_valid[block_id]) {
@@ -785,6 +791,8 @@ DISH::scheme_t BlockData::getSchemeForInsertion(
 
         if (m_scheme == DISH::scheme_t::UNCOMPRESSED) {
           default_scheme = compress_cntlr->getDefaultScheme();
+
+          LOG_PRINT("BlockData(%p) getting default_scheme: %s", this, DISH::scheme2name.at(default_scheme));
 
           if (default_scheme == DISH::scheme_t::SCHEME1) {
             if (isScheme1Compressible(block_id, 0, wr_data, m_blocksize,
@@ -1025,16 +1033,22 @@ std::string BlockData::dump() const {
   info_ss << ")->m_data{ ";
 
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-    info_ss << "( ";
-
-    for (UInt32 j = 0; j < m_blocksize; ++j) {
-      info_ss << m_data[i][j] << " ";
-    }
-
-    info_ss << " )";
+    info_ss << printChunks(reinterpret_cast<const UInt32*>(&m_data[i][0]), m_blocksize / DISH::GRANULARITY_BYTES);
   }
 
   info_ss << " }";
+
+  return info_ss.str();
+}
+
+std::string BlockData::printChunks(const UInt32* data, UInt32 size) const {
+  std::stringstream info_ss;
+
+  info_ss << "( " << std::hex; 
+  for (UInt32 i = 0; i < size; ++i) {
+    info_ss << data[i] << " ";
+  }
+  info_ss << " )";
 
   return info_ss.str();
 }
