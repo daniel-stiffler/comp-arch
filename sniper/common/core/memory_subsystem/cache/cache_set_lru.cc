@@ -28,8 +28,6 @@ CacheSetLRU::~CacheSetLRU() {
 }
 
 UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
-  LOG_PRINT("BEGIN CacheSetLRU attempting to find replacement way");
-
   // First try to find an unallocated superblock
   for (UInt32 i = 0; i < m_associativity; ++i) {
     if (!m_superblock_info_ways[i].isValid()) {
@@ -72,7 +70,6 @@ UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
       moveToMRU(repl_way);
       m_set_info->incrementAttempt(attempt);
 
-      LOG_PRINT("END CacheSetLRU found replacement way %u", repl_way);
       return repl_way;
     }
   }

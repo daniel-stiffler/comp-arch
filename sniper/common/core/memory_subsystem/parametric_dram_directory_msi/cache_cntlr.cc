@@ -1692,8 +1692,8 @@ std::pair<SubsecondTime, bool> CacheCntlr::updateCacheBlock(
 
   LOG_ASSERT_ERROR((getCacheState(address) == CacheState::INVALID) ||
                        (getCacheState(address) == new_cstate) || !m_coherent,
-                   "state didn't change as we wanted: %c instead of %c",
-                   CStateString(getCacheState(address)),
+                   "@%lx state didn't change as we wanted: %c instead of %c",
+                   address, CStateString(getCacheState(address)),
                    CStateString(new_cstate));
 
   CacheState::cstate_t current_cstate;
@@ -1701,8 +1701,8 @@ std::pair<SubsecondTime, bool> CacheCntlr::updateCacheBlock(
       (cache_block_info) ? cache_block_info->getCState() : CacheState::INVALID;
   LOG_ASSERT_ERROR((current_cstate == CacheState::INVALID) ||
                        (current_cstate == new_cstate) || !m_coherent,
-                   "state didn't change as we wanted: %c instead of %c",
-                   CStateString(current_cstate), CStateString(new_cstate));
+                   "ptr(%p) @%lx state didn't change as we wanted: %c instead of %c",
+                   cache_block_info, address, CStateString(current_cstate), CStateString(new_cstate));
   if (out_buf && !buf_written) {
     MYLOG("cache_block_info: %c", cache_block_info ? 'y' : 'n');
     MYLOG("@%lx  %c > %c (req: %c)", address, CStateString(old_cstate),
