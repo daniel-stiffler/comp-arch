@@ -1,6 +1,5 @@
 #include "superblock_info.h"
 
-#include <cassert>
 #include <sstream>
 #include <utility>
 
@@ -13,8 +12,6 @@ SuperblockInfo::~SuperblockInfo() {
 }
 
 CacheBlockInfo* SuperblockInfo::peekBlock(UInt32 block_id) const {
-  assert(block_id < SUPERBLOCK_SIZE);
-
   return m_block_infos[block_id].get();
 }
 
@@ -23,15 +20,6 @@ bool SuperblockInfo::canInsertBlockInfo(
     const CacheBlockInfo* ins_block_info) const {
 
   (void)ins_block_info;  // TODO
-
-  assert(block_id < SUPERBLOCK_SIZE);
-
-  LOG_PRINT(
-      "SuperblockInfo checking m_supertag: %lx supertag: %lx block_id: %u ptr: "
-      "%p valid: "
-      "{%d%d%d%d}",
-      m_supertag, supertag, block_id, ins_block_info, isValid(0), isValid(1),
-      isValid(2), isValid(3));
 
   if (!isValid()) {
     return true;
@@ -51,8 +39,6 @@ bool SuperblockInfo::isValid() const {
 }
 
 bool SuperblockInfo::isValid(UInt32 block_id) const {
-  assert(block_id < SUPERBLOCK_SIZE);
-
   const CacheBlockInfo* tmp_block_info = m_block_infos[block_id].get();
 
   return (tmp_block_info != nullptr && tmp_block_info->isValid());
@@ -65,11 +51,6 @@ void SuperblockInfo::swapBlockInfo(UInt32 block_id,
 }
 
 CacheBlockInfoUPtr SuperblockInfo::evictBlockInfo(UInt32 block_id) {
-  assert(block_id < SUPERBLOCK_SIZE);
-
-  LOG_PRINT("SuperblockInfo evicting CacheBlockInfo block_id: %u %p", block_id,
-            m_block_infos[block_id].get());
-
   CacheBlockInfoUPtr evict_block = std::move(m_block_infos[block_id]);
 
   if (!isValid()) m_supertag = TAG_UNUSED;
@@ -80,18 +61,7 @@ CacheBlockInfoUPtr SuperblockInfo::evictBlockInfo(UInt32 block_id) {
 void SuperblockInfo::insertBlockInfo(IntPtr supertag, UInt32 block_id,
                                      CacheBlockInfoUPtr ins_block_info) {
 
-  assert(block_id < SUPERBLOCK_SIZE);
-
-  LOG_PRINT(
-      "SuperblockInfo inserting CacheBlockInfo supertag: %lx block_id: %u "
-      "ins_block_info: %p",
-      supertag, block_id, ins_block_info.get());
-
-  assert(canInsertBlockInfo(supertag, block_id, ins_block_info.get()));
-
-  if (!isValid()) {
-    m_supertag = supertag;
-  }
+  if (!isValid()) m_supertag = supertag;
 
   m_block_infos[block_id] = std::move(ins_block_info);
 }
@@ -127,9 +97,6 @@ bool SuperblockInfo::isValidReplacement() const {
 }
 
 void SuperblockInfo::invalidateBlockInfo(IntPtr tag, UInt32 block_id) {
-  assert(block_id < SUPERBLOCK_SIZE);
-
-  LOG_PRINT("SuperblockInfo invalidaing tag: %lx block_id: %u", tag, block_id);
 
   CacheBlockInfo* inv_block_info = m_block_infos[block_id].get();
 
@@ -146,8 +113,11 @@ void SuperblockInfo::invalidateBlockInfo(IntPtr tag, UInt32 block_id) {
 
   inv_block_info->invalidate();
 
-  LOG_PRINT("SuperblockInfo invalidating CacheBlockInfo tag: %lx block_id: %u ",
-            tag, block_id);
+  /* TODO: SNIPER simulator race conditions when two threads attempt to invalidate at the same time */
+  /*
+  LOG_PRINT("SuperblockInfo(%p) invalidating CacheBlockInfo tag: %lx block_id: %u ptr: %p",
+            this, tag, block_id, inv_block_info);
+  */
 
   if (!isValid()) m_supertag = TAG_UNUSED;
 }

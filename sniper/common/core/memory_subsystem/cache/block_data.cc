@@ -43,7 +43,6 @@ UInt8 BlockData::insertDictEntry(UInt32 value) {
 void BlockData::removeDictEntry(UInt8 ptr) {
   if (m_used_ptrs.find(ptr) == m_used_ptrs.end()) {
     LOG_PRINT_ERROR("Attempted to remove invalid dict entry at %u", ptr);
-    assert(false);
   } else {
     m_used_ptrs.erase(ptr);   // Remove from used list
     m_dict.erase(ptr);        // Remove dictionary entry
@@ -182,7 +181,6 @@ bool BlockData::isCompressible(UInt32 block_id, UInt32 offset,
       return false;
     }
   }
-  assert(false);
 }
 
 bool BlockData::isScheme1Compressible(
@@ -874,8 +872,8 @@ void BlockData::writeBlockData(UInt32 block_id, UInt32 offset,
                                const Byte* wr_data, UInt32 bytes,
                                CacheCompressionCntlr* compress_cntlr) {
 
-  LOG_PRINT("Writing BlockData block_id: %u offset: %u wr_data: %p bytes: %u",
-            block_id, offset, wr_data, bytes);
+  LOG_PRINT("BlockData(%p) writing block_id: %u offset: %u wr_data: %p bytes: %u",
+            this, block_id, offset, wr_data, bytes);
 
   assert(wr_data != nullptr || (wr_data == nullptr && bytes == 0));
 
@@ -908,8 +906,8 @@ void BlockData::writeBlockData(UInt32 block_id, UInt32 offset,
 void BlockData::readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
                               Byte* rd_data) const {
 
-  LOG_PRINT("Reading BlockData block_id: %u offset: %u rd_data: %p bytes: %u",
-            block_id, offset, rd_data, bytes);
+  LOG_PRINT("BlockData(%p) reading block_id: %u offset: %u rd_data: %p bytes: %u",
+            this, block_id, offset, rd_data, bytes);
 
   assert(rd_data != nullptr || (rd_data == nullptr && bytes == 0));
 
@@ -940,9 +938,9 @@ void BlockData::insertBlockData(UInt32 block_id, const Byte* ins_data,
                                 CacheCompressionCntlr* compress_cntlr) {
 
   LOG_PRINT(
-      "Inserting BlockData block_id: %u ins_data: %p m_scheme: %s m_valid: "
+      "BlockData(%p) inserting block_id: %u ins_data: %p m_scheme: %s m_valid: "
       "{%d%d%d%d}",
-      block_id, ins_data, DISH::scheme2name.at(m_scheme), m_valid[0],
+      this, block_id, ins_data, DISH::scheme2name.at(m_scheme), m_valid[0],
       m_valid[1], m_valid[2], m_valid[3]);
 
   LOG_ASSERT_ERROR(!m_valid[block_id],
