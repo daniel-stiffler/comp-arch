@@ -83,18 +83,42 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
                                         WritebackLines* writebacks,
                                         CacheCntlr* cntlr) {
 
+  /*
+   * Due to the way SNIPER and PIN paritition the address spaces and monitor memory accesses,
+   * the system does not pass real program data down the hierarchy.  The root cause is on line 
+   * 48 of DynamicInstruction, where the simulator initiates an Cache::accessMemory with NULL
+   * as the data_buffer parameter.  The way the latter function has been modified from Graphite
+   * basically causes a memcpy with the program data then forces the pointer to be null -- invalidating
+   * the copy operation.  There is _NO WORKAROUND_ for multithreaded application, which host threads
+   * in separate address spaces (sometimes), but we can dereference ca_address to get the data in the
+   * main thread.  
+   * 
+   * Case 1: 
+   * Memory accesses made using the Nehalem controller pass nullptr
+   * data_buf down through the hierarchy with a proper data_length.  This is done to ensure that usage bits get updated
+   * appropriately.  If this happens, the object needs to dereference addr to get the real data.
+   * 
+   * Case 2:
+   * Whenever accessSingleLine is used to handle writebacks in the cache hierarchy, it should contain a data buffer
+   * that we created.  Therefore, we can use the actual (possibly stale) contents instead of getting the real data.
+   *
+   * Case 3:
+   * Cache objects with blocksize 1 are used to model i and d TLBs in addition to actual memory.  They have a tell-tale
+   * call signature, however, since bytes is always 0.  Unfortunately, they have to use this function as an interface to 
+   */
+
   IntPtr tag;
   UInt32 set_index;
   UInt32 block_id;
   UInt32 offset;
   splitAddress(addr, &tag, nullptr, &set_index, &block_id, &offset);
+  const Byte* real_data = reinterpret_cast<const Byte*>(addr);   // EXTREME DANGER!!!
 
   CacheSet* set = m_sets[set_index].get();
 
   UInt32 way;
   CacheBlockInfo* block_info = set->find(tag, block_id, &way);
-
-  if (block_info == nullptr) return nullptr;
+  if (block_info == nullptr) return nullptr;  // Cache MISS
 
   if (access_type == LOAD) {
     LOG_PRINT(
@@ -108,13 +132,27 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
     assert(writebacks != nullptr);
     assert(cntlr != nullptr);
 
+    const Byte* wr_data = nullptr;  // Proxy for write data buffer
+
+    if (acc_data == nullptr && bytes != 0) {
+      IntPtr cl_real_addr = tagToAddress(tag);
+      LOG_PRINT("Cache(%p %s) fetching real data for write %s", this, m_name.c_str(), printChunks(reinterpret_cast<const UInt32 *>(cl_real_addr), m_blocksize / 4).c_str());
+      wr_data = real_data;
+    } else if (acc_data != nullptr && bytes != 0) {
+      LOG_PRINT("Cache(%p %s) using hierarchy data for write %s", this, m_name.c_str(), printBytes(acc_data, bytes).c_str());
+      wr_data = acc_data;
+    } else if (bytes == 0) {
+      LOG_PRINT_WARNING("Cache(%p %s) used as TLB attempting a write", this, m_name.c_str());
+      wr_data = acc_data;
+    }
+
     LOG_PRINT(
         "Cache(%p %s) accessing (STORE) line addr: %lx tag: %lx set_index: %u "
         "block_id: %u "
-        "offset: %u acc_data: %p",
-        this, m_name.c_str(), addr, tag, set_index, block_id, offset, acc_data);
+        "offset: %u acc_data: %p bytes: %u",
+        this, m_name.c_str(), addr, tag, set_index, block_id, offset, wr_data, bytes);
 
-    set->writeLine(way, block_id, offset, acc_data, bytes, update_replacement,
+    set->writeLine(way, block_id, offset, wr_data, bytes, update_replacement,
                    writebacks, cntlr);
   }
 
@@ -125,6 +163,7 @@ void Cache::insertSingleLine(IntPtr addr, const Byte* ins_data,
                              SubsecondTime now, WritebackLines* writebacks,
                              CacheCntlr* cntlr) {
 
+  // TODO: check REAL DATA
   assert(writebacks != nullptr);
 
   IntPtr tag;

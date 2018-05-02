@@ -1040,15 +1040,3 @@ std::string BlockData::dump() const {
 
   return info_ss.str();
 }
-
-std::string BlockData::printChunks(const UInt32* data, UInt32 size) const {
-  std::stringstream info_ss;
-
-  info_ss << "( " << std::hex; 
-  for (UInt32 i = 0; i < size; ++i) {
-    info_ss << data[i] << " ";
-  }
-  info_ss << " )";
-
-  return info_ss.str();
-}

@@ -1367,36 +1367,11 @@ void CacheCntlr::accessCache(Core::mem_op_t mem_op_type, IntPtr ca_address,
                              UInt32 offset, Byte* data_buf, UInt32 data_length,
                              bool update_replacement) {
 
-
-  // TODO: check backtrace for accuracy
-  // Core::accessMemoryFast -> MemoryManagerBase::coreInitiateMemoryAccessFast
-  // -> ParametricDramDirectoryMSI::MemoryManager::coreInitiateMemoryAccess ->
-  // ParametricDramDirectoryMSI::CacheCntlr::processMemOpFromCore ->
-  // ParametricDramDirectoryMSI::CacheCntlr::accessCache
-  //
-  //
-  // Memory accesses made using the Fast Nehalem controller pass nullptr
-  // data_buf down through the hierarchy with data_length that corresponds to a
-  // full block.  This is done to ensure that usage bits get updated
-  // appropriately, but it does not respect the Cache interface anymore
-
-  // There is another (unidentified) case where data_len != getCacheBlockSize()
-  // offset != 0 but data_buf == nullptr
-  UInt32 adj_data_length;
-  UInt32 adj_offset;
-  if (data_buf == nullptr /*&& data_length == getCacheBlockSize()*/) {
-    adj_data_length = 0;
-    adj_offset = 0;
-  } else {
-    adj_data_length = data_length;
-    adj_offset = offset;
-  }
-
   switch (mem_op_type) {
     case Core::READ:
     case Core::READ_EX:
       m_master->m_cache->accessSingleLine(
-          ca_address + adj_offset, Cache::LOAD, data_buf, adj_data_length,
+          ca_address + offset, Cache::LOAD, data_buf, data_length,
           getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD),
           update_replacement);
       break;
@@ -1414,7 +1389,7 @@ void CacheCntlr::accessCache(Core::mem_op_t mem_op_type, IntPtr ca_address,
       }
 
       CacheBlockInfo* wr_block_info = m_master->m_cache->accessSingleLine(
-          ca_address + adj_offset, Cache::STORE, data_buf, adj_data_length,
+          ca_address + offset, Cache::STORE, data_buf, data_length,
           getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD),
           update_replacement, &writebacks, this);
 
@@ -1423,8 +1398,8 @@ void CacheCntlr::accessCache(Core::mem_op_t mem_op_type, IntPtr ca_address,
         LOG_ASSERT_ERROR(m_next_cache_cntlr,
                          "Writethrough enabled on last-level cache !?");
         MYLOG("writethrough start");
-        m_next_cache_cntlr->writeCacheBlock(ca_address, adj_offset, data_buf,
-                                            adj_data_length,
+        m_next_cache_cntlr->writeCacheBlock(ca_address, offset, data_buf,
+                                            data_length,
                                             ShmemPerfModel::_USER_THREAD);
         MYLOG("writethrough done");
       }
@@ -1501,8 +1476,8 @@ SharedCacheBlockInfo* CacheCntlr::insertCacheBlock(
     IntPtr address, CacheState::cstate_t cstate, Byte* data_buf,
     core_id_t requester, ShmemPerfModel::Thread_t thread_num) {
 
-  LOG_PRINT("CacheCntlr::insertCacheBlock l%d @ %lx as %c (now %c)",
-            m_mem_component, address, CStateString(cstate),
+  LOG_PRINT("CacheCntlr::insertCacheBlock l%d @ %lx %p as %c (now %c)",
+            m_mem_component, address, data_buf, CStateString(cstate),
             CStateString(getCacheState(address)));
 
   LOG_ASSERT_ERROR(

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <map>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -33,3 +34,7 @@ typedef std::unique_ptr<CacheBlockInfo> CacheBlockInfoUPtr;
 typedef std::tuple<IntPtr, CacheBlockInfoUPtr, std::unique_ptr<Byte>>
     WritebackTuple;
 typedef std::vector<WritebackTuple> WritebackLines;
+
+// Utility functions
+std::string printBytes(const Byte* data, UInt32 size);
+std::string printChunks(const UInt32* data, UInt32 size);

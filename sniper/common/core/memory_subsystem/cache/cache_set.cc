@@ -85,7 +85,12 @@ void CacheSet::readLine(UInt32 way, UInt32 block_id, UInt32 offset,
       this, way, block_id, offset, rd_data, bytes);
 
   assert(offset + bytes <= m_blocksize);
-  assert((rd_data != nullptr) || (rd_data == nullptr && bytes == 0));
+
+  if (!((rd_data == nullptr && offset == 0 && bytes  == 0) || (rd_data != nullptr))) {
+    LOG_PRINT("TODO: CacheSet readLine failed nullptr condition, so manually setting offset and bytes for now");
+    offset = 0;
+    bytes = 0;
+  }
 
   const SuperblockInfo& superblock_info = m_superblock_info_ways[way];
   assert(superblock_info.isValid(block_id));
@@ -107,7 +112,8 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
       this, way, block_id, offset, wr_data, bytes, writebacks->size());
 
   assert(offset + bytes <= m_blocksize);
-  assert((wr_data != nullptr) || bytes == 0);
+  assert((wr_data == nullptr && offset == 0 && bytes == 0) ||
+         (wr_data != nullptr));
 
   SuperblockInfo& superblock_info = m_superblock_info_ways[way];
   assert(superblock_info.isValid(block_id));
@@ -117,6 +123,9 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
   if (super_data.canWriteBlockData(block_id, offset, wr_data, bytes,
                                    m_compress_cntlr)) {
 
+    if (wr_data != nullptr && bytes >= 4) {
+      LOG_PRINT("TESTING %x %x %x %x", wr_data[0], wr_data[1], wr_data[2], wr_data[3]);
+    }
     super_data.writeBlockData(block_id, offset, wr_data, bytes,
                               m_compress_cntlr);
 

@@ -101,5 +101,4 @@ class BlockData {
                            CacheCompressionCntlr* compress_cntlr);
 
   std::string dump() const;
-  std::string printChunks(const UInt32* data, UInt32 size) const;
 };
