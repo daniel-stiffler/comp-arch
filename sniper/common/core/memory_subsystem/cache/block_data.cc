@@ -2,13 +2,13 @@
 
 #include <algorithm>
 #include <cassert>
-#include <sstream>
 #include <iostream>
+#include <sstream>
 
 #include "cache.h"
-#include "stats.h"
-#include "log.h"
 #include "cache.h"
+#include "log.h"
+#include "stats.h"
 
 bool BlockData::lookupDictEntry(UInt32 value, UInt8* ptr) const {
   for (const auto& entry : m_dict) {
@@ -112,7 +112,8 @@ UInt32 BlockData::getFirstValid() const {
   return SUPERBLOCK_SIZE;
 }
 
-BlockData::BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize, const Cache* parent_cache)
+BlockData::BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize,
+                     const Cache* parent_cache, bool is_compressible)
     : m_blocksize{blocksize},
       m_chunks_per_block{blocksize / DISH::GRANULARITY_BYTES},
       m_scheme{DISH::scheme_t::UNCOMPRESSED},
@@ -124,9 +125,15 @@ BlockData::BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize, const Cache
       m_data_offsets{{0}},
       m_parent_cache{parent_cache},
       m_otf_switch{0},
-      m_scheme1_1x{0}, m_scheme1_2x{0}, m_scheme1_3x{0}, m_scheme1_4x{0},
-      m_scheme2_1x{0}, m_scheme2_2x{0}, m_scheme2_3x{0}, m_scheme2_4x{0},
-     m_uncompressed_1x{0} {
+      m_scheme1_1x{0},
+      m_scheme1_2x{0},
+      m_scheme1_3x{0},
+      m_scheme1_4x{0},
+      m_scheme2_1x{0},
+      m_scheme2_2x{0},
+      m_scheme2_3x{0},
+      m_scheme2_4x{0},
+      m_uncompressed_1x{0} {
 
   for (auto& e : m_data) {
     e.resize(m_blocksize);
@@ -134,42 +141,44 @@ BlockData::BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize, const Cache
 
   changeScheme(m_scheme);
 
-
   std::string stat_name;
-  std::string specifier = (std::string("_s") + std::to_string(set_index)) + 
+  std::string specifier = (std::string("_s") + std::to_string(set_index)) +
                           (std::string("_w") + std::to_string(way));
   core_id_t core_id = m_parent_cache->getCoreId();
   String cache_name = m_parent_cache->getName();
 
-  stat_name.assign(std::string("otf_switch") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_otf_switch);
-
-  stat_name.assign(std::string("scheme1_1x") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_1x);
-
-  stat_name.assign(std::string("scheme1_2x") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_2x);
-
-  stat_name.assign(std::string("scheme1_3x") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_3x);
-
-  stat_name.assign(std::string("scheme1_4x") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_4x);
-
-  stat_name.assign(std::string("scheme2_1x") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_1x);
-
-  stat_name.assign(std::string("scheme2_2x") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_2x);
-
-  stat_name.assign(std::string("scheme2_3x") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_3x);
-
-  stat_name.assign(std::string("scheme2_4x") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_4x);
-
   stat_name.assign(std::string("uncompressed_1x") + specifier);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_uncompressed_1x);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(),
+                      &m_uncompressed_1x);
+
+  if (is_compressible) {
+    stat_name.assign(std::string("otf_switch") + specifier);
+    registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_otf_switch);
+
+    stat_name.assign(std::string("scheme1_1x") + specifier);
+    registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_1x);
+
+    stat_name.assign(std::string("scheme1_2x") + specifier);
+    registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_2x);
+
+    stat_name.assign(std::string("scheme1_3x") + specifier);
+    registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_3x);
+
+    stat_name.assign(std::string("scheme1_4x") + specifier);
+    registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_4x);
+
+    stat_name.assign(std::string("scheme2_1x") + specifier);
+    registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_1x);
+
+    stat_name.assign(std::string("scheme2_2x") + specifier);
+    registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_2x);
+
+    stat_name.assign(std::string("scheme2_3x") + specifier);
+    registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_3x);
+
+    stat_name.assign(std::string("scheme2_4x") + specifier);
+    registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_4x);
+  }
 }
 
 BlockData::~BlockData() {}
@@ -821,11 +830,15 @@ DISH::scheme_t BlockData::getSchemeForInsertion(
     CacheCompressionCntlr* compress_cntlr) const {
 
   if (wr_data != nullptr) {
-    LOG_PRINT("BlockData(%p) getting scheme for insertion (%d) size: %u block_id: %u wr_data: %s",
-              this, compress_cntlr->canCompress(), m_blocksize / DISH::GRANULARITY_BYTES, block_id, 
-              printChunks(reinterpret_cast<const UInt32*>(wr_data), 
-                         m_blocksize / DISH::GRANULARITY_BYTES).c_str());
-  } 
+    LOG_PRINT(
+        "BlockData(%p) getting scheme for insertion (%d) size: %u block_id: %u "
+        "wr_data: %s",
+        this, compress_cntlr->canCompress(),
+        m_blocksize / DISH::GRANULARITY_BYTES, block_id,
+        printChunks(reinterpret_cast<const UInt32*>(wr_data),
+                    m_blocksize / DISH::GRANULARITY_BYTES)
+            .c_str());
+  }
 
   if (compress_cntlr->canCompress()) {
     if (isValid()) {
@@ -837,7 +850,8 @@ DISH::scheme_t BlockData::getSchemeForInsertion(
         if (m_scheme == DISH::scheme_t::UNCOMPRESSED) {
           default_scheme = compress_cntlr->getDefaultScheme();
 
-          LOG_PRINT("BlockData(%p) getting default_scheme: %s", this, DISH::scheme2name.at(default_scheme));
+          LOG_PRINT("BlockData(%p) getting default_scheme: %s", this,
+                    DISH::scheme2name.at(default_scheme));
 
           if (default_scheme == DISH::scheme_t::SCHEME1) {
             if (isScheme1Compressible(block_id, 0, wr_data, m_blocksize,
@@ -925,8 +939,9 @@ void BlockData::writeBlockData(UInt32 block_id, UInt32 offset,
                                const Byte* wr_data, UInt32 bytes,
                                CacheCompressionCntlr* compress_cntlr) {
 
-  LOG_PRINT("BlockData(%p) writing block_id: %u offset: %u wr_data: %p bytes: %u",
-            this, block_id, offset, wr_data, bytes);
+  LOG_PRINT(
+      "BlockData(%p) writing block_id: %u offset: %u wr_data: %p bytes: %u",
+      this, block_id, offset, wr_data, bytes);
 
   assert(wr_data != nullptr || (wr_data == nullptr && bytes == 0));
 
@@ -959,8 +974,9 @@ void BlockData::writeBlockData(UInt32 block_id, UInt32 offset,
 void BlockData::readBlockData(UInt32 block_id, UInt32 offset, UInt32 bytes,
                               Byte* rd_data) const {
 
-  LOG_PRINT("BlockData(%p) reading block_id: %u offset: %u rd_data: %p bytes: %u",
-            this, block_id, offset, rd_data, bytes);
+  LOG_PRINT(
+      "BlockData(%p) reading block_id: %u offset: %u rd_data: %p bytes: %u",
+      this, block_id, offset, rd_data, bytes);
 
   assert(rd_data != nullptr || (rd_data == nullptr && bytes == 0));
 
@@ -991,10 +1007,11 @@ void BlockData::insertBlockData(UInt32 block_id, const Byte* ins_data,
                                 CacheCompressionCntlr* compress_cntlr) {
 
   LOG_PRINT(
-      "BlockData(%p) inserting block_id: %u ins_data: %p m_scheme: %s m_valid: "
+      "BlockData(%s) inserting block_id: %u ins_data: %p m_scheme: %s m_valid: "
       "{%d%d%d%d}",
-      this, block_id, ins_data, DISH::scheme2name.at(m_scheme), m_valid[0],
-      m_valid[1], m_valid[2], m_valid[3]);
+      m_parent_cache->getName().c_str(), block_id, ins_data,
+      DISH::scheme2name.at(m_scheme), m_valid[0], m_valid[1], m_valid[2],
+      m_valid[3]);
 
   LOG_ASSERT_ERROR(!m_valid[block_id],
                    "Attempted to insert block on top of an existing one");
@@ -1022,7 +1039,9 @@ void BlockData::insertBlockData(UInt32 block_id, const Byte* ins_data,
   }
 
   m_valid[block_id] = true;
+
   if (compress_cntlr->shouldPruneDISHEntries()) compact();
+
   updateStatistics();
 }
 
@@ -1079,7 +1098,8 @@ std::string BlockData::dump() const {
   info_ss << ")->m_data{ ";
 
   for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-    info_ss << printChunks(reinterpret_cast<const UInt32*>(&m_data[i][0]), m_blocksize / DISH::GRANULARITY_BYTES);
+    info_ss << printChunks(reinterpret_cast<const UInt32*>(&m_data[i][0]),
+                           m_blocksize / DISH::GRANULARITY_BYTES);
   }
 
   info_ss << " }";
@@ -1099,48 +1119,50 @@ int BlockData::getNumValid() {
 
 void BlockData::updateStatistics() {
   switch (m_scheme) {
-  case DISH::scheme_t::UNCOMPRESSED:
-    if (isValid()) {
-      m_uncompressed_1x++;
-    }
-    break;
-  case DISH::scheme_t::SCHEME1:
-    switch (getNumValid()) {
-    case 1:
-      m_scheme1_1x++;
+    case DISH::scheme_t::UNCOMPRESSED:
+      if (isValid()) {
+        m_uncompressed_1x++;
+        LOG_PRINT("BlockData(%s) m_uncompressed_1x: %lu",
+                  m_parent_cache->getName().c_str(), m_uncompressed_1x);
+      }
       break;
-    case 2:
-      m_scheme1_2x++;
+    case DISH::scheme_t::SCHEME1:
+      switch (getNumValid()) {
+        case 1:
+          m_scheme1_1x++;
+          break;
+        case 2:
+          m_scheme1_2x++;
+          break;
+        case 3:
+          m_scheme1_3x++;
+          break;
+        case 4:
+          m_scheme1_4x++;
+          break;
+        default:
+          break;
+      }
       break;
-    case 3:
-      m_scheme1_3x++;
-      break;
-    case 4:
-      m_scheme1_4x++;
+    case DISH::scheme_t::SCHEME2:
+      switch (getNumValid()) {
+        case 1:
+          m_scheme2_1x++;
+          break;
+        case 2:
+          m_scheme2_2x++;
+          break;
+        case 3:
+          ++m_scheme2_3x;
+          break;
+        case 4:
+          m_scheme2_4x++;
+          break;
+        default:
+          break;
+      }
       break;
     default:
       break;
-    }
-    break;
-  case DISH::scheme_t::SCHEME2:
-    switch (getNumValid()) {
-    case 1:
-      m_scheme2_1x++;
-      break;
-    case 2:
-      m_scheme2_2x++;
-      break;
-    case 3:
-      ++m_scheme2_3x;
-      break;
-    case 4:
-      m_scheme2_4x++;
-      break;
-    default:
-      break;
-    }
-    break;
-  default:
-    break;
   }
 }

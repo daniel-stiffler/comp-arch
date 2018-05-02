@@ -61,7 +61,8 @@ class BlockData {
   UInt32 getFirstValid() const;
 
  public:
-  BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize, const Cache* parent_cache);
+  BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize,
+            const Cache* parent_cache, bool is_compressible);
   virtual ~BlockData();
 
   bool isValid() const;

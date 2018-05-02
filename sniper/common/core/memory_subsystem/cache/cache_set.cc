@@ -6,13 +6,14 @@
 
 #include "config.h"
 #include "config.hpp"
-#include "stats.h"
 #include "log.h"
 #include "simulator.h"
+#include "stats.h"
 
 std::unique_ptr<CacheSet> CacheSet::createCacheSet(
-    UInt32 set_index, String cfgname, core_id_t core_id, String replacement_policy,
-    CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
+    UInt32 set_index, String cfgname, core_id_t core_id,
+    String replacement_policy, CacheBase::cache_t cache_type,
+    UInt32 associativity, UInt32 blocksize,
     CacheCompressionCntlr* compress_cntlr, const Cache* parent_cache,
     CacheSetInfo* set_info) {
 
@@ -23,8 +24,8 @@ std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     // Fall through
     case CacheBase::LRU_QBS: {
       CacheSetLRU* tmp = new CacheSetLRU(
-          set_index, cache_type, associativity, blocksize, compress_cntlr, parent_cache,
-          dynamic_cast<CacheSetInfoLRU*>(set_info),
+          set_index, cache_type, associativity, blocksize, compress_cntlr,
+          parent_cache, dynamic_cast<CacheSetInfoLRU*>(set_info),
           getNumQBSAttempts(policy, cfgname, core_id));
 
       return std::unique_ptr<CacheSet>(tmp);
@@ -59,8 +60,9 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
   }
 }
 
-CacheSet::CacheSet(UInt32 set_index, CacheBase::cache_t cache_type, UInt32 associativity,
-                   UInt32 blocksize, CacheCompressionCntlr* compress_cntlr,
+CacheSet::CacheSet(UInt32 set_index, CacheBase::cache_t cache_type,
+                   UInt32 associativity, UInt32 blocksize,
+                   CacheCompressionCntlr* compress_cntlr,
                    const Cache* parent_cache)
     : m_associativity(associativity),
       m_blocksize(blocksize),
@@ -69,16 +71,26 @@ CacheSet::CacheSet(UInt32 set_index, CacheBase::cache_t cache_type, UInt32 assoc
       m_parent_cache(parent_cache),
       m_evict_bc_write(0) {
 
+  bool is_compressible;
+  if (compress_cntlr != nullptr && compress_cntlr->canCompress()) {
+    is_compressible = true;
+  } else {
+    is_compressible = false;
+  }
+
   // Create the objects containing block data
   for (UInt32 i = 0; i < m_associativity; ++i) {
-    m_data_ways.emplace_back(i, set_index, m_blocksize, parent_cache);
+    m_data_ways.emplace_back(i, set_index, m_blocksize, parent_cache,
+                             is_compressible);
   }
 
   core_id_t core_id = m_parent_cache->getCoreId();
   String cache_name = m_parent_cache->getName();
 
-  std::string stat_name = std::string("evict_bc_write_s") + std::to_string(set_index);
-  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_evict_bc_write);
+  std::string stat_name =
+      std::string("evict_bc_write_s") + std::to_string(set_index);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(),
+                      &m_evict_bc_write);
 }
 
 CacheSet::~CacheSet() {
@@ -94,10 +106,13 @@ void CacheSet::readLine(UInt32 way, UInt32 block_id, UInt32 offset,
 
   assert(offset + bytes <= m_blocksize);
 
-  if (!((rd_data == nullptr && offset == 0 && bytes  == 0) || (rd_data != nullptr))) {
-    LOG_PRINT("TODO: CacheSet readLine failed nullptr condition, so manually setting offset and bytes for now");
+  if (!((rd_data == nullptr && offset == 0 && bytes == 0) ||
+        (rd_data != nullptr))) {
+    LOG_PRINT(
+        "TODO: CacheSet readLine failed nullptr condition, so manually setting "
+        "offset and bytes for now");
     offset = 0;
-    bytes = 0;
+    bytes  = 0;
   }
 
   const SuperblockInfo& superblock_info = m_superblock_info_ways[way];
@@ -132,7 +147,8 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
                                    m_compress_cntlr)) {
 
     if (wr_data != nullptr && bytes >= 4) {
-      LOG_PRINT("TESTING %x %x %x %x", wr_data[0], wr_data[1], wr_data[2], wr_data[3]);
+      LOG_PRINT("TESTING %x %x %x %x", wr_data[0], wr_data[1], wr_data[2],
+                wr_data[3]);
     }
     super_data.writeBlockData(block_id, offset, wr_data, bytes,
                               m_compress_cntlr);
@@ -202,8 +218,10 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
                           CacheCntlr* cntlr) {
 
   LOG_PRINT(
-      "CacheSet(%p) BEGIN inserting tag: %lx ptr: %p ins_data: %p, %u writebacks scheduled",
-      this, ins_block_info->getTag(), ins_block_info.get(), ins_data, writebacks->size());
+      "CacheSet(%p) BEGIN inserting tag: %lx ptr: %p ins_data: %p, %u "
+      "writebacks scheduled",
+      this, ins_block_info->getTag(), ins_block_info.get(), ins_data,
+      writebacks->size());
 
   assert(ins_block_info.get() != nullptr);
   assert(writebacks != nullptr);
@@ -234,7 +252,8 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
                                             std::move(ins_block_info));
 
       LOG_PRINT(
-          "CacheSet (%p) END inserting ins_supertag: %lx ins_block_id: %u way: %u, "
+          "CacheSet (%p) END inserting ins_supertag: %lx ins_block_id: %u way: "
+          "%u, "
           "merged lines",
           this, ins_supertag, ins_block_id, i);
 
@@ -257,9 +276,11 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   SuperblockInfo& superblock_info = m_superblock_info_ways[repl_way];
   BlockData& super_data           = m_data_ways[repl_way];
 
-  LOG_PRINT("CacheSet(%p) inserting causes evictions tag: %lx ptr: %p ins_data: %p",
-            this, ins_block_info->getTag(), ins_block_info.get(), ins_data);
-  LOG_PRINT("CacheSet(%p) evicting from way: %u superblock %s", this, repl_way, superblock_info.dump().c_str());
+  LOG_PRINT(
+      "CacheSet(%p) inserting causes evictions tag: %lx ptr: %p ins_data: %p",
+      this, ins_block_info->getTag(), ins_block_info.get(), ins_data);
+  LOG_PRINT("CacheSet(%p) evicting from way: %u superblock %s", this, repl_way,
+            superblock_info.dump().c_str());
 
   /*
    * Second insert attempt: kick out every cache block in the superblock
@@ -288,7 +309,8 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
                                   std::move(ins_block_info));
 
   LOG_PRINT(
-      "CacheSet(%p) END inserting with evictions ins_supertag: %lx ins_block_id: %u way: %u, %u "
+      "CacheSet(%p) END inserting with evictions ins_supertag: %lx "
+      "ins_block_id: %u way: %u, %u "
       "writebacks scheduled",
       this, ins_supertag, ins_block_id, repl_way, writebacks->size());
 }
