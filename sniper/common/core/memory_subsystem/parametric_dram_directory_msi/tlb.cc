@@ -64,7 +64,7 @@ void TLB::allocate(IntPtr address, SubsecondTime now) {
   WritebackLines writebacks;
   writebacks.reserve(1);
 
-  m_cache.insertSingleLine(vpn, nullptr, now, &writebacks);
+  m_cache.insertSingleLine(vpn, nullptr, now, false, &writebacks);
 
   // Use next level as a victim cache
   if (!writebacks.empty() && m_next_level) {

@@ -126,7 +126,7 @@ class Cache : public CacheBase {
                                    WritebackLines* writebacks = nullptr,
                                    CacheCntlr* cntlr          = nullptr);
   void insertSingleLine(IntPtr addr, const Byte* ins_data, SubsecondTime now,
-                        WritebackLines* writebacks,
+                        bool is_fill, WritebackLines* writebacks,
                         CacheCntlr* cntlr = nullptr);
   CacheBlockInfo* peekSingleLine(IntPtr addr);
 

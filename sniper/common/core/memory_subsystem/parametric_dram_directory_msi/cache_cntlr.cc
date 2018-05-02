@@ -426,7 +426,7 @@ HitWhere::where_t CacheCntlr::processMemOpFromCore(
       insertCacheBlock(
           ca_address,
           mem_op_type == Core::READ ? CacheState::SHARED : CacheState::MODIFIED,
-          NULL, m_core_id, ShmemPerfModel::_USER_THREAD);
+          NULL, m_core_id, ShmemPerfModel::_USER_THREAD, false);
       cache_block_info = getCacheBlockInfo(ca_address);
     }
   } else if (cache_hit && m_passthrough) {
@@ -723,7 +723,7 @@ void CacheCntlr::copyDataFromNextLevel(Core::mem_op_t mem_op_type,
   } else {
     // Insert the Cache Block in our own cache
     insertCacheBlock(address, cstate, data_buf, m_core_id,
-                     ShmemPerfModel::_USER_THREAD);
+                     ShmemPerfModel::_USER_THREAD, true);
     MYLOG("copyDataFromNextLevel l%d done (inserted)", m_mem_component);
   }
 }
@@ -852,7 +852,7 @@ HitWhere::where_t CacheCntlr::processShmemReqFromPrevCache(
       cache_block_info = insertCacheBlock(
           address,
           mem_op_type == Core::READ ? CacheState::SHARED : CacheState::MODIFIED,
-          NULL, m_core_id, ShmemPerfModel::_USER_THREAD);
+          NULL, m_core_id, ShmemPerfModel::_USER_THREAD, false);
   } else if (cache_hit && m_passthrough && count) {
     // Passthrough == false: cache that always misses (except in the L1 fill
     // path, detected by count==false, where it should return the data)
@@ -1093,7 +1093,7 @@ HitWhere::where_t CacheCntlr::processShmemReqFromPrevCache(
           insertCacheBlock(address,
                            mem_op_type == Core::READ ? CacheState::SHARED
                                                      : CacheState::MODIFIED,
-                           data_buf, m_core_id, ShmemPerfModel::_USER_THREAD);
+                           data_buf, m_core_id, ShmemPerfModel::_USER_THREAD, false);
           if (isPrefetch != Prefetch::NONE)
             getCacheBlockInfo(address)->setOption(CacheBlockInfo::PREFETCH);
 
@@ -1474,10 +1474,10 @@ void CacheCntlr::retrieveCacheBlock(IntPtr address, Byte* data_buf,
 
 SharedCacheBlockInfo* CacheCntlr::insertCacheBlock(
     IntPtr address, CacheState::cstate_t cstate, Byte* data_buf,
-    core_id_t requester, ShmemPerfModel::Thread_t thread_num) {
+    core_id_t requester, ShmemPerfModel::Thread_t thread_num, bool is_fill) {
 
-  LOG_PRINT("CacheCntlr::insertCacheBlock l%d @ %lx %p as %c (now %c)",
-            m_mem_component, address, data_buf, CStateString(cstate),
+  LOG_PRINT("CacheCntlr::insertCacheBlock (fill: %d) l%d @ %lx %p as %c (now %c)",
+            is_fill, m_mem_component, address, data_buf, CStateString(cstate),
             CStateString(getCacheState(address)));
 
   LOG_ASSERT_ERROR(
@@ -1496,7 +1496,7 @@ SharedCacheBlockInfo* CacheCntlr::insertCacheBlock(
   }
 
   SubsecondTime now = getShmemPerfModel()->getElapsedTime(thread_num);
-  m_master->m_cache->insertSingleLine(address, data_buf, now, &writebacks,
+  m_master->m_cache->insertSingleLine(address, data_buf, now, is_fill, &writebacks,
                                       this);
 
   SharedCacheBlockInfo* cache_block_info = setCacheState(address, cstate);
@@ -2110,8 +2110,9 @@ void CacheCntlr::processExRepFromDramDirectory(
   IntPtr address = shmem_msg->getAddress();
   Byte* data_buf = shmem_msg->getDataBuf();
 
+  // TODO: check presence of data, otherwise set data_buf to nullptr
   insertCacheBlock(address, CacheState::EXCLUSIVE, data_buf, requester,
-                   ShmemPerfModel::_SIM_THREAD);
+                   ShmemPerfModel::_SIM_THREAD, false);
   MYLOG("processExRepFromDramDirectory l%d end", m_mem_component);
 }
 
@@ -2128,8 +2129,9 @@ void CacheCntlr::processShRepFromDramDirectory(
   Byte* data_buf = shmem_msg->getDataBuf();
 
   // Insert Cache Block in L2 Cache
+  // TODO: check presence of data, otherwise set data_buf to nullptr
   insertCacheBlock(address, CacheState::SHARED, data_buf, requester,
-                   ShmemPerfModel::_SIM_THREAD);
+                   ShmemPerfModel::_SIM_THREAD, false);
 }
 
 void CacheCntlr::processUpgradeRepFromDramDirectory(

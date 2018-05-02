@@ -323,7 +323,7 @@ class CacheCntlr : ::CacheCntlr {
   SharedCacheBlockInfo* insertCacheBlock(IntPtr address,
                                          CacheState::cstate_t cstate,
                                          Byte* data_buf, core_id_t requester,
-                                         ShmemPerfModel::Thread_t thread_num);
+                                         ShmemPerfModel::Thread_t thread_num, bool is_fill);
   std::pair<SubsecondTime, bool> updateCacheBlock(
       IntPtr address, CacheState::cstate_t cstate, Transition::reason_t reason,
       Byte* out_buf, ShmemPerfModel::Thread_t thread_num);

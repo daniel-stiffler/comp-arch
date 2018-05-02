@@ -109,7 +109,7 @@ UInt32 BlockData::getFirstValid() const {
   return SUPERBLOCK_SIZE;
 }
 
-BlockData::BlockData(UInt32 blocksize)
+BlockData::BlockData(UInt32 blocksize, const String& cache_name, core_id_t core_id)
     : m_blocksize{blocksize},
       m_chunks_per_block{blocksize / DISH::GRANULARITY_BYTES},
       m_scheme{DISH::scheme_t::UNCOMPRESSED},
@@ -118,13 +118,28 @@ BlockData::BlockData(UInt32 blocksize)
       m_free_ptrs(DISH::SCHEME1_DICT_SIZE),  // Maximum number of buckets
       m_used_ptrs(DISH::SCHEME1_DICT_SIZE),  // Maximum number of buckets
       m_data_ptrs{{0}},
-      m_data_offsets{{0}} {
+      m_data_offsets{{0}},
+      m_oft_switch{0},
+      m_scheme1_1x{0}, m_scheme1_2x{0}, m_scheme1_3x{0}, m_scheme1_4x{0},
+      m_scheme2_1x{0}, m_scheme2_2x{0}, m_scheme2_3x{0}, m_scheme2_4x{0} {
 
   for (auto& e : m_data) {
     e.resize(m_blocksize);
   }
 
   changeScheme(m_scheme);
+
+  registerStatsMetric(cache_name, core_id, "otf_switch", &m_otf_switch);
+
+  registerStatsMetric(cache_name, core_id, "scheme1_1x", &m_scheme1_1x);
+  registerStatsMetric(cache_name, core_id, "scheme1_2x", &m_scheme1_2x);
+  registerStatsMetric(cache_name, core_id, "scheme1_3x", &m_scheme1_3x);
+  registerStatsMetric(cache_name, core_id, "scheme1_4x", &m_scheme1_4x);
+
+  registerStatsMetric(cache_name, core_id, "scheme2_1x", &m_scheme2_1x);
+  registerStatsMetric(cache_name, core_id, "scheme2_2x", &m_scheme2_2x);
+  registerStatsMetric(cache_name, core_id, "scheme2_3x", &m_scheme2_3x);
+  registerStatsMetric(cache_name, core_id, "scheme2_4x", &m_scheme2_4x);
 }
 
 BlockData::~BlockData() {}

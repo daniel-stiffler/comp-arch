@@ -33,6 +33,19 @@ class BlockData {
   // Dictionary pointer offsets for Scheme 2 compression
   UInt8 m_data_offsets[SUPERBLOCK_SIZE][DISH::BLOCK_ENTRIES];
 
+  // Statistics counters
+  UInt32 m_otf_switch;
+
+  UInt32 m_scheme1_1x;
+  UInt32 m_scheme1_2x;
+  UInt32 m_scheme1_3x;
+  UInt32 m_scheme1_4x;
+
+  UInt32 scheme2_1x;
+  UInt32 scheme2_2x;
+  UInt32 scheme2_3x;
+  UInt32 scheme2_4x;
+
  private:
   bool lookupDictEntry(UInt32 value, UInt8* ptr = nullptr) const;
   UInt8 insertDictEntry(UInt32 value);
@@ -41,7 +54,7 @@ class BlockData {
   UInt32 getFirstValid() const;
 
  public:
-  BlockData(UInt32 blocksize);
+  BlockData(UInt32 blocksize, const String& cache_name, core_id_t core_id);
   virtual ~BlockData();
 
   bool isValid() const;
