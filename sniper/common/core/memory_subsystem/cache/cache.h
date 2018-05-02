@@ -97,7 +97,6 @@ class Cache : public CacheBase {
 
   FaultInjector* m_fault_injector;
   std::unique_ptr<CacheCompressionCntlr> m_compress_cntlr;
-  core_id_t m_core_id;
 
 #ifdef ENABLE_SET_USAGE_HIST
   std::vector<UInt64> m_set_usage_hist;
@@ -117,10 +116,8 @@ class Cache : public CacheBase {
   ~Cache();
 
   Lock& getSetLock(IntPtr addr);
-  bool isCompressible();
-  UInt32 getSuperblockSize();
-
-  core_id_t getCoreId() {return m_core_id;}
+  bool isCompressible() const;
+  UInt32 getSuperblockSize() const;
 
   void invalidateSingleLine(IntPtr addr);
   CacheBlockInfo* accessSingleLine(IntPtr addr, access_t access_type,

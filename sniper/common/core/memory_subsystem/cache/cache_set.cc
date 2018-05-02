@@ -6,11 +6,12 @@
 
 #include "config.h"
 #include "config.hpp"
+#include "stats.h"
 #include "log.h"
 #include "simulator.h"
 
 std::unique_ptr<CacheSet> CacheSet::createCacheSet(
-    String cfgname, core_id_t core_id, String replacement_policy,
+    UInt32 set_index, String cfgname, core_id_t core_id, String replacement_policy,
     CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
     CacheCompressionCntlr* compress_cntlr, const Cache* parent_cache,
     CacheSetInfo* set_info) {
@@ -22,7 +23,7 @@ std::unique_ptr<CacheSet> CacheSet::createCacheSet(
     // Fall through
     case CacheBase::LRU_QBS: {
       CacheSetLRU* tmp = new CacheSetLRU(
-          cache_type, associativity, blocksize, compress_cntlr, parent_cache,
+          set_index, cache_type, associativity, blocksize, compress_cntlr, parent_cache,
           dynamic_cast<CacheSetInfoLRU*>(set_info),
           getNumQBSAttempts(policy, cfgname, core_id));
 
@@ -58,19 +59,26 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
   }
 }
 
-CacheSet::CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
+CacheSet::CacheSet(UInt32 set_index, CacheBase::cache_t cache_type, UInt32 associativity,
                    UInt32 blocksize, CacheCompressionCntlr* compress_cntlr,
                    const Cache* parent_cache)
     : m_associativity(associativity),
       m_blocksize(blocksize),
       m_compress_cntlr(compress_cntlr),
       m_superblock_info_ways(associativity),
-      m_parent_cache(parent_cache) {
+      m_parent_cache(parent_cache),
+      m_evict_bc_write(0) {
 
   // Create the objects containing block data
   for (UInt32 i = 0; i < m_associativity; ++i) {
-    m_data_ways.emplace_back(m_blocksize);
+    m_data_ways.emplace_back(i, set_index, m_blocksize, parent_cache);
   }
+
+  core_id_t core_id = m_parent_cache->getCoreId();
+  String cache_name = m_parent_cache->getName();
+
+  std::string stat_name = std::string("evict_bc_write_s") + std::to_string(set_index);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_evict_bc_write);
 }
 
 CacheSet::~CacheSet() {
@@ -138,6 +146,8 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
      * This re-insertion task leverages CacheSet::insertLine and simply passes
      * the eviction references through.
      */
+
+    ++m_evict_bc_write;
 
     // Current (modified) block data
     std::unique_ptr<Byte> mod_block_data(new Byte[m_blocksize]);

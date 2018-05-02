@@ -212,7 +212,7 @@ void DramCache::putDataToCache(Cache::access_t access_type, IntPtr addr,
   WritebackLines writebacks;
   writebacks.reserve(1);  // Reserve space for only one possible eviction
 
-  m_cache->insertSingleLine(addr, ins_data, now, &writebacks,
+  m_cache->insertSingleLine(addr, ins_data, now, false, &writebacks,
                             nullptr /* No controller reference */);
 
   CacheBlockInfo* block_info = m_cache->peekSingleLine(addr);

@@ -27,7 +27,7 @@ class CacheSet {
  public:
   // Factory method used to create the CacheSet specialized subclasses
   static std::unique_ptr<CacheSet> createCacheSet(
-      String cfgname, core_id_t core_id, String replacement_policy,
+      UInt32 set_index, String cfgname, core_id_t core_id, String replacement_policy,
       CacheBase::cache_t cache_type, UInt32 associativity, UInt32 blocksize,
       CacheCompressionCntlr* compress_cntlr, const Cache* parent_cache,
       CacheSetInfo* set_info = nullptr);
@@ -54,8 +54,12 @@ class CacheSet {
 
   const Cache* m_parent_cache;  // Used for address translation
 
+  // Statisitics
+
+  UInt64 m_evict_bc_write;
+
  public:
-  CacheSet(CacheBase::cache_t cache_type, UInt32 associativity,
+  CacheSet(UInt32 set_index, CacheBase::cache_t cache_type, UInt32 associativity,
            UInt32 blocksize, CacheCompressionCntlr* compress_cntlr,
            const Cache* parent_cache);
   virtual ~CacheSet();

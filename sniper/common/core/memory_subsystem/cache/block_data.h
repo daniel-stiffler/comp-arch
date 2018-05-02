@@ -34,6 +34,8 @@ class BlockData {
   // Dictionary pointer offsets for Scheme 2 compression
   UInt8 m_data_offsets[SUPERBLOCK_SIZE][DISH::BLOCK_ENTRIES];
 
+  const Cache* m_parent_cache;
+
   // Statistics counters
   UInt64 m_otf_switch;
 
@@ -59,7 +61,7 @@ class BlockData {
   UInt32 getFirstValid() const;
 
  public:
-  BlockData(UInt32 blocksize, const Cache* parent);
+  BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize, const Cache* parent_cache);
   virtual ~BlockData();
 
   bool isValid() const;

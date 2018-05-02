@@ -38,7 +38,7 @@ class CacheSetInfoLRU : public CacheSetInfo {
 
 class CacheSetLRU : public CacheSet {
  public:
-  CacheSetLRU(CacheBase::cache_t cache_type, UInt32 associativity,
+  CacheSetLRU(UInt32 set_index, CacheBase::cache_t cache_type, UInt32 associativity,
               UInt32 blocksize, CacheCompressionCntlr* compress_cntlr, const Cache* parent_cache,
               CacheSetInfoLRU* set_info, UInt8 num_attempts);
   virtual ~CacheSetLRU();

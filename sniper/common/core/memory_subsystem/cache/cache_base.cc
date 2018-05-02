@@ -5,10 +5,11 @@
 #include "address_home_lookup.h"
 
 CacheBase::CacheBase(
-   String name, UInt32 num_sets, UInt32 associativity, UInt32 blocksize,
+   String name, core_id_t core_id, UInt32 num_sets, UInt32 associativity, UInt32 blocksize,
    CacheBase::hash_t hash, AddressHomeLookup *ahl)
 :
    m_name(name),
+   m_core_id(core_id),
    m_cache_size(UInt64(num_sets) * associativity * blocksize),
    m_associativity(associativity),
    m_blocksize(blocksize),
@@ -39,46 +40,4 @@ CacheBase::parseAddressHash(String hash_name)
       return CacheBase::HASH_RNG2_MOD;
    else
       LOG_PRINT_ERROR("Invalid address hash function %s", hash_name.c_str());
-}
-
-void
-CacheBase::splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index) const
-{
-   tag = addr >> m_log_blocksize;
-
-   IntPtr linearAddress = m_ahl ? m_ahl->getLinearAddress(addr) : addr;
-   IntPtr block_num = linearAddress >> m_log_blocksize;
-
-   switch(m_hash)
-   {
-      case CacheBase::HASH_MASK:
-         set_index = block_num & (m_num_sets-1);
-         break;
-      case CacheBase::HASH_MOD:
-         set_index = block_num % m_num_sets;
-         break;
-      case CacheBase::HASH_RNG1_MOD:
-      {
-         UInt64 state = rng_seed(block_num);
-         set_index = rng_next(state) % m_num_sets;
-         break;
-      }
-      case CacheBase::HASH_RNG2_MOD:
-      {
-         UInt64 state = rng_seed(block_num);
-         rng_next(state);
-         set_index = rng_next(state) % m_num_sets;
-         break;
-      }
-      default:
-         LOG_PRINT_ERROR("Invalid hash function %d", m_hash);
-   }
-}
-
-void
-CacheBase::splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index,
-                  UInt32& block_offset) const
-{
-   block_offset = addr & (m_blocksize-1);
-   splitAddress(addr, tag, set_index);
 }

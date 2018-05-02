@@ -14,15 +14,15 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
              String replacement_policy, cache_t cache_type, hash_t hash,
              FaultInjector* fault_injector, AddressHomeLookup* ahl,
              bool change_scheme_otf, bool prune_dish_entries)
-    : CacheBase(name, num_sets, associativity, blocksize, hash, ahl),
+    : CacheBase(name, core_id, num_sets, associativity, blocksize, hash, ahl),
       m_enabled(false),
       m_num_accesses(0),
       m_num_hits(0),
       m_cache_type(cache_type),
       m_fault_injector(fault_injector),
       m_compress_cntlr(new CacheCompressionCntlr(
-          compressible, change_scheme_otf, prune_dish_entries)),
-      m_core_id(core_id) {
+          compressible, change_scheme_otf, prune_dish_entries))
+       {
 
   m_set_info =
       CacheSet::createCacheSetInfo(name, cfgname, core_id, replacement_policy,
@@ -33,7 +33,7 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
   for (UInt32 i = 0; i < m_num_sets; i++) {
     // CacheSet::createCacheSet is a factory function for CacheSet objects, so
     // use move semantics to push the unique pointers into the vector
-    m_sets.push_back(std::move(CacheSet::createCacheSet(
+    m_sets.push_back(std::move(CacheSet::createCacheSet(i,
         cfgname, core_id, replacement_policy, m_cache_type, m_associativity,
         m_blocksize, m_compress_cntlr.get(), this, m_set_info.get())));
   }
@@ -65,8 +65,8 @@ Lock& Cache::getSetLock(IntPtr addr) {
   return m_sets[set_index]->getLock();
 }
 
-bool Cache::isCompressible() { return m_compress_cntlr->canCompress(); }
-UInt32 Cache::getSuperblockSize() { return SUPERBLOCK_SIZE; }
+bool Cache::isCompressible() const { return m_compress_cntlr->canCompress(); }
+UInt32 Cache::getSuperblockSize() const { return SUPERBLOCK_SIZE; }
 
 void Cache::invalidateSingleLine(IntPtr addr) {
   IntPtr tag;

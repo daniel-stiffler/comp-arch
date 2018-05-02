@@ -63,6 +63,7 @@ class CacheBase
    protected:
       // input params
       String m_name;
+      core_id_t m_core_id;
       UInt64 m_cache_size;
       UInt32 m_associativity;
       UInt32 m_blocksize;
@@ -75,14 +76,11 @@ class CacheBase
 
    public:
       // constructors/destructors
-      CacheBase(String name, UInt32 num_sets, UInt32 associativity, UInt32 blocksize, CacheBase::hash_t hash, AddressHomeLookup *ahl = NULL);
+      CacheBase(String name, core_id_t core_id, UInt32 num_sets, UInt32 associativity, UInt32 blocksize, CacheBase::hash_t hash, AddressHomeLookup *ahl = NULL);
       virtual ~CacheBase();
 
-      // Utilities
-      void splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index) const;
-      void splitAddress(const IntPtr addr, IntPtr& tag, UInt32& set_index, UInt32& block_offset) const;
-
-      String getName(void) { return m_name; }
+      String getName() const { return m_name; }
+      core_id_t getCoreId() const { return m_core_id; }
 
       UInt32 getNumSets() const { return m_num_sets; }
       UInt32 getAssociativity() const { return m_associativity; }

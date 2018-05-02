@@ -6,7 +6,7 @@
 #include <iostream>
 
 #include "cache.h"
-#include "fixed_types.h"
+#include "stats.h"
 #include "log.h"
 #include "cache.h"
 
@@ -76,7 +76,7 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       m_free_ptrs.clear();
       m_used_ptrs.clear();
     } else if (new_scheme == DISH::scheme_t::SCHEME2) {
-      m_otf_switch++;
+      ++m_otf_switch;
       m_dict.clear();
       m_free_ptrs.clear();
       m_used_ptrs.clear();
@@ -91,7 +91,7 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       m_free_ptrs.clear();
       m_used_ptrs.clear();
     } else if (new_scheme == DISH::scheme_t::SCHEME1) {
-      m_otf_switch++;
+      ++m_otf_switch;
       m_dict.clear();
       m_free_ptrs.clear();
       m_used_ptrs.clear();
@@ -112,7 +112,7 @@ UInt32 BlockData::getFirstValid() const {
   return SUPERBLOCK_SIZE;
 }
 
-BlockData::BlockData(UInt32 blocksize, const Cache * parent)
+BlockData::BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize, const Cache* parent_cache)
     : m_blocksize{blocksize},
       m_chunks_per_block{blocksize / DISH::GRANULARITY_BYTES},
       m_scheme{DISH::scheme_t::UNCOMPRESSED},
@@ -122,11 +122,11 @@ BlockData::BlockData(UInt32 blocksize, const Cache * parent)
       m_used_ptrs(DISH::SCHEME1_DICT_SIZE),  // Maximum number of buckets
       m_data_ptrs{{0}},
       m_data_offsets{{0}},
-      m_otf_switch(0),
-      m_scheme1_1x(0), m_scheme1_2x(0), m_scheme1_3x(0), m_scheme1_4x(0),
-      m_scheme2_1x(0), m_scheme2_2x(0), m_scheme2_3x(0), m_scheme2_4x(0),
-      m_uncompressed_1x(0),
-      m_parent(parent) {
+      m_parent_cache{parent_cache},
+      m_otf_switch{0},
+      m_scheme1_1x{0}, m_scheme1_2x{0}, m_scheme1_3x{0}, m_scheme1_4x{0},
+      m_scheme2_1x{0}, m_scheme2_2x{0}, m_scheme2_3x{0}, m_scheme2_4x{0},
+     m_uncompressed_1x{0} {
 
   for (auto& e : m_data) {
     e.resize(m_blocksize);
@@ -134,17 +134,42 @@ BlockData::BlockData(UInt32 blocksize, const Cache * parent)
 
   changeScheme(m_scheme);
 
-  registerStatsMetric(cache_name, core_id, "otf_switch", &m_otf_switch);
 
-  registerStatsMetric(cache_name, core_id, "scheme1_1x", &m_scheme1_1x);
-  registerStatsMetric(cache_name, core_id, "scheme1_2x", &m_scheme1_2x);
-  registerStatsMetric(cache_name, core_id, "scheme1_3x", &m_scheme1_3x);
-  registerStatsMetric(cache_name, core_id, "scheme1_4x", &m_scheme1_4x);
+  std::string stat_name;
+  std::string specifier = (std::string("_s") + std::to_string(set_index)) + 
+                          (std::string("_w") + std::to_string(way));
+  core_id_t core_id = m_parent_cache->getCoreId();
+  String cache_name = m_parent_cache->getName();
 
-  registerStatsMetric(cache_name, core_id, "scheme2_1x", &m_scheme2_1x);
-  registerStatsMetric(cache_name, core_id, "scheme2_2x", &m_scheme2_2x);
-  registerStatsMetric(cache_name, core_id, "scheme2_3x", &m_scheme2_3x);
-  registerStatsMetric(cache_name, core_id, "scheme2_4x", &m_scheme2_4x);
+  stat_name.assign(std::string("otf_switch") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_otf_switch);
+
+  stat_name.assign(std::string("scheme1_1x") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_1x);
+
+  stat_name.assign(std::string("scheme1_2x") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_2x);
+
+  stat_name.assign(std::string("scheme1_3x") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_3x);
+
+  stat_name.assign(std::string("scheme1_4x") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme1_4x);
+
+  stat_name.assign(std::string("scheme2_1x") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_1x);
+
+  stat_name.assign(std::string("scheme2_2x") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_2x);
+
+  stat_name.assign(std::string("scheme2_3x") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_3x);
+
+  stat_name.assign(std::string("scheme2_4x") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_scheme2_4x);
+
+  stat_name.assign(std::string("uncompressed_1x") + specifier);
+  registerStatsMetric(cache_name, core_id, stat_name.c_str(), &m_uncompressed_1x);
 }
 
 BlockData::~BlockData() {}
@@ -1106,7 +1131,7 @@ void BlockData::updateStatistics() {
       m_scheme2_2x++;
       break;
     case 3:
-      m_scheme2_3x++;
+      ++m_scheme2_3x;
       break;
     case 4:
       m_scheme2_4x++;
@@ -1119,4 +1144,3 @@ void BlockData::updateStatistics() {
     break;
   }
 }
-
