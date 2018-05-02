@@ -8,6 +8,7 @@
 #include "superblock_info.h"
 
 class CacheCompressionCntlr;
+class Cache;
 
 class BlockData {
  protected:
@@ -41,10 +42,14 @@ class BlockData {
   UInt32 m_scheme1_3x;
   UInt32 m_scheme1_4x;
 
-  UInt32 scheme2_1x;
-  UInt32 scheme2_2x;
-  UInt32 scheme2_3x;
-  UInt32 scheme2_4x;
+  UInt32 m_scheme2_1x;
+  UInt32 m_scheme2_2x;
+  UInt32 m_scheme2_3x;
+  UInt32 m_scheme2_4x;
+
+  UInt32 m_uncompressed_1x;
+
+  const Cache* m_parent;
 
  private:
   bool lookupDictEntry(UInt32 value, UInt8* ptr = nullptr) const;
@@ -54,7 +59,7 @@ class BlockData {
   UInt32 getFirstValid() const;
 
  public:
-  BlockData(UInt32 blocksize, const String& cache_name, core_id_t core_id);
+  BlockData(UInt32 blocksize, const Cache* parent);
   virtual ~BlockData();
 
   bool isValid() const;
@@ -92,6 +97,8 @@ class BlockData {
   DISH::scheme_t getSchemeForInsertion(
       UInt32 block_id, const Byte* wr_data,
       CacheCompressionCntlr* compress_cntlr) const;
+  void updateStatistics();
+  int getNumValid();
 
  public:
   bool canWriteBlockData(UInt32 block_id, UInt32 offset, const Byte* wr_data,

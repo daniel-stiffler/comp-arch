@@ -21,7 +21,8 @@ Cache::Cache(String name, String cfgname, core_id_t core_id, UInt32 num_sets,
       m_cache_type(cache_type),
       m_fault_injector(fault_injector),
       m_compress_cntlr(new CacheCompressionCntlr(
-          compressible, change_scheme_otf, prune_dish_entries)) {
+          compressible, change_scheme_otf, prune_dish_entries)),
+      m_core_id(core_id) {
 
   m_set_info =
       CacheSet::createCacheSetInfo(name, cfgname, core_id, replacement_policy,

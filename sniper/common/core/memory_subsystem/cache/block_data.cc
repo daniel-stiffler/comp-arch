@@ -8,6 +8,7 @@
 #include "cache.h"
 #include "fixed_types.h"
 #include "log.h"
+#include "cache.h"
 
 bool BlockData::lookupDictEntry(UInt32 value, UInt8* ptr) const {
   for (const auto& entry : m_dict) {
@@ -109,7 +110,7 @@ UInt32 BlockData::getFirstValid() const {
   return SUPERBLOCK_SIZE;
 }
 
-BlockData::BlockData(UInt32 blocksize, const String& cache_name, core_id_t core_id)
+BlockData::BlockData(UInt32 blocksize, const Cache * parent)
     : m_blocksize{blocksize},
       m_chunks_per_block{blocksize / DISH::GRANULARITY_BYTES},
       m_scheme{DISH::scheme_t::UNCOMPRESSED},
@@ -119,9 +120,11 @@ BlockData::BlockData(UInt32 blocksize, const String& cache_name, core_id_t core_
       m_used_ptrs(DISH::SCHEME1_DICT_SIZE),  // Maximum number of buckets
       m_data_ptrs{{0}},
       m_data_offsets{{0}},
-      m_oft_switch{0},
-      m_scheme1_1x{0}, m_scheme1_2x{0}, m_scheme1_3x{0}, m_scheme1_4x{0},
-      m_scheme2_1x{0}, m_scheme2_2x{0}, m_scheme2_3x{0}, m_scheme2_4x{0} {
+      m_otf_switch(0),
+      m_scheme1_1x(0), m_scheme1_2x(0), m_scheme1_3x(0), m_scheme1_4x(0),
+      m_scheme2_1x(0), m_scheme2_2x(0), m_scheme2_3x(0), m_scheme2_4x(0),
+      m_uncompressed_1x(0),
+      m_parent(parent) {
 
   for (auto& e : m_data) {
     e.resize(m_blocksize);
@@ -993,6 +996,7 @@ void BlockData::insertBlockData(UInt32 block_id, const Byte* ins_data,
 
   m_valid[block_id] = true;
   if (compress_cntlr->shouldPruneDISHEntries()) compact();
+  updateStatistics();
 }
 
 void BlockData::evictBlockData(UInt32 block_id, Byte* evict_data,
@@ -1055,3 +1059,62 @@ std::string BlockData::dump() const {
 
   return info_ss.str();
 }
+
+int BlockData::getNumValid() {
+  int res = 0;
+  for (UInt32 i = 0; i < SUPERBLOCK_SIZE; i++) {
+    if (m_valid[i]) {
+      res++;
+    }
+  }
+  return res;
+}
+
+void BlockData::updateStatistics() {
+  switch (m_scheme) {
+  case DISH::scheme_t::UNCOMPRESSED:
+    if (isValid()) {
+      m_uncompressed_1x++;
+    }
+    break;
+  case DISH::scheme_t::SCHEME1:
+    switch (getNumValid()) {
+    case 1:
+      m_scheme1_1x++;
+      break;
+    case 2:
+      m_scheme1_2x++;
+      break;
+    case 3:
+      m_scheme1_3x++;
+      break;
+    case 4:
+      m_scheme1_4x++;
+      break;
+    default:
+      break;
+    }
+    break;
+  case DISH::scheme_t::SCHEME2:
+    switch (getNumValid()) {
+    case 1:
+      m_scheme2_1x++;
+      break;
+    case 2:
+      m_scheme2_2x++;
+      break;
+    case 3:
+      m_scheme2_3x++;
+      break;
+    case 4:
+      m_scheme2_4x++;
+      break;
+    default:
+      break;
+    }
+    break;
+  default:
+    break;
+  }
+}
+
