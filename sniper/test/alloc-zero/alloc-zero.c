@@ -9,9 +9,6 @@ int main() {
   __attribute__((align(512))) uint32_t a[4][16];
   uint32_t i, j;
 
-  printf("A pointer %p %p %p %p\n", &a[0][0], &a[1][0], &a[2][0], &a[3][0]);
-
-  SimRoiStart(); 
 
   for (i = 0; i < 4; ++i) {
     for (j = 0; j < 16; ++j) {
@@ -30,7 +27,6 @@ int main() {
       val += 1;
     }
   }
-  SimRoiEnd();
 
   printf("HERE val is %u, sum is %u", val, sum);
   

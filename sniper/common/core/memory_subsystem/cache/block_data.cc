@@ -101,6 +101,8 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       }
     }
   }
+
+  m_scheme = new_scheme;
 }
 
 UInt32 BlockData::getFirstValid() const {
