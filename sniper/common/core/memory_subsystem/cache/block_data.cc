@@ -76,6 +76,7 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       m_free_ptrs.clear();
       m_used_ptrs.clear();
     } else if (new_scheme == DISH::scheme_t::SCHEME2) {
+      m_otf_switch++;
       m_dict.clear();
       m_free_ptrs.clear();
       m_used_ptrs.clear();
@@ -90,6 +91,7 @@ void BlockData::changeScheme(DISH::scheme_t new_scheme) {
       m_free_ptrs.clear();
       m_used_ptrs.clear();
     } else if (new_scheme == DISH::scheme_t::SCHEME1) {
+      m_otf_switch++;
       m_dict.clear();
       m_free_ptrs.clear();
       m_used_ptrs.clear();

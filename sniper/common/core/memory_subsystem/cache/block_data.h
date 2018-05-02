@@ -35,19 +35,19 @@ class BlockData {
   UInt8 m_data_offsets[SUPERBLOCK_SIZE][DISH::BLOCK_ENTRIES];
 
   // Statistics counters
-  UInt32 m_otf_switch;
+  UInt64 m_otf_switch;
 
-  UInt32 m_scheme1_1x;
-  UInt32 m_scheme1_2x;
-  UInt32 m_scheme1_3x;
-  UInt32 m_scheme1_4x;
+  UInt64 m_scheme1_1x;
+  UInt64 m_scheme1_2x;
+  UInt64 m_scheme1_3x;
+  UInt64 m_scheme1_4x;
 
-  UInt32 m_scheme2_1x;
-  UInt32 m_scheme2_2x;
-  UInt32 m_scheme2_3x;
-  UInt32 m_scheme2_4x;
+  UInt64 m_scheme2_1x;
+  UInt64 m_scheme2_2x;
+  UInt64 m_scheme2_3x;
+  UInt64 m_scheme2_4x;
 
-  UInt32 m_uncompressed_1x;
+  UInt64 m_uncompressed_1x;
 
   const Cache* m_parent;
 
