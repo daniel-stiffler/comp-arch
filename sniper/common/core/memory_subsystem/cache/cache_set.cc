@@ -152,8 +152,6 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
     }
     super_data.writeBlockData(block_id, offset, wr_data, bytes,
                               m_compress_cntlr);
-
-    if (update_replacement) updateReplacementWay(way);
   } else {
     /*
      * Current block cannot be modified in memory without changing the
@@ -175,6 +173,8 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
     insertLine(std::move(mod_block_info), mod_block_data.get(), writebacks,
                cntlr);
   }
+
+  if (update_replacement) updateReplacementWay(way);
 }
 
 CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32 block_id, UInt32* way) const {
