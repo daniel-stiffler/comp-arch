@@ -1,6 +1,7 @@
 #include "cache.h"  // Forward declared the class
 #include "cache_set.h"
 #include "cache_set_lru.h"
+#include "cache_set_lruqbs.h"
 
 #include <algorithm>
 #include <cassert>
@@ -21,16 +22,22 @@ std::unique_ptr<CacheSet> CacheSet::createCacheSet(
   CacheBase::ReplacementPolicy policy = parsePolicyType(replacement_policy);
 
   switch (policy) {
-    case CacheBase::LRU:
-    // Fall through
-    case CacheBase::LRU_QBS: {
+    case CacheBase::LRU: {
       CacheSetLRU* tmp = new CacheSetLRU(
           set_index, cache_type, associativity, blocksize, compress_cntlr,
-          parent_cache, dynamic_cast<CacheSetInfoLRU*>(set_info),
-          getNumQBSAttempts(policy, cfgname, core_id));
+          parent_cache, dynamic_cast<CacheSetInfoLRU*>(set_info));
 
       return std::unique_ptr<CacheSet>(tmp);
     } break;
+
+    case CacheBase::LRU_QBS: {
+      CacheSetLRUQBS* tmp = new CacheSetLRUQBS(
+          set_index, cache_type, associativity, blocksize, compress_cntlr,
+          parent_cache, dynamic_cast<CacheSetInfoLRUQBS*>(set_info),
+          getNumQBSAttempts(policy, cfgname, core_id));
+
+      return std::unique_ptr<CacheSet>(tmp);
+    } break; 
 
     default:
       LOG_PRINT_ERROR(
@@ -45,11 +52,16 @@ std::unique_ptr<CacheSetInfo> CacheSet::createCacheSetInfo(
   CacheBase::ReplacementPolicy policy = parsePolicyType(replacement_policy);
 
   switch (policy) {
-    case CacheBase::LRU:
-    // Fall through
+    case CacheBase::LRU: {
+      CacheSetInfoLRU* tmp = new CacheSetInfoLRU(name, cfgname, core_id, 
+                                                 associativity);
+
+      return std::unique_ptr<CacheSetInfo>(tmp);
+    } break;
+
     case CacheBase::LRU_QBS: {
-      CacheSetInfoLRU* tmp =
-          new CacheSetInfoLRU(name, cfgname, core_id, associativity,
+      CacheSetInfoLRUQBS* tmp =
+          new CacheSetInfoLRUQBS(name, cfgname, core_id, associativity,
                               getNumQBSAttempts(policy, cfgname, core_id));
 
       return std::unique_ptr<CacheSetInfo>(tmp);
@@ -65,12 +77,12 @@ CacheSet::CacheSet(UInt32 set_index, CacheBase::cache_t cache_type,
                    UInt32 associativity, UInt32 blocksize,
                    CacheCompressionCntlr* compress_cntlr,
                    const Cache* parent_cache)
-    : m_associativity(associativity),
-      m_blocksize(blocksize),
-      m_compress_cntlr(compress_cntlr),
+    : m_associativity{associativity},
+      m_blocksize{blocksize},
+      m_compress_cntlr{compress_cntlr},
       m_superblock_info_ways(associativity),
-      m_parent_cache(parent_cache),
-      m_evict_bc_write(0) {
+      m_parent_cache{parent_cache},
+      m_evict_bc_write{0} {
 
   bool is_compressible;
   if (compress_cntlr != nullptr && compress_cntlr->canCompress()) {
@@ -103,28 +115,26 @@ void CacheSet::readLine(UInt32 way, UInt32 block_id, UInt32 offset,
 
   assert(offset + bytes <= m_blocksize);
 
-  if (!((rd_data == nullptr && offset == 0 && bytes == 0) ||
-        (rd_data != nullptr))) {
-    LOG_PRINT_WARNING(
-        "TODO: CacheSet readLine failed nullptr condition, so manually setting "
-        "offset and bytes for now");
-    offset = 0;
-    bytes  = 0;
+  LOG_PRINT("(%s->%p): Reading line way: %u block_id: %u offset: %u bytes: %u "
+            "ptr:% p",
+            m_parent_cache->getName().c_str(), this, way, block_id, offset, 
+            bytes, rd_data);
+
+  if (rd_data != nullptr) {
+    const SuperblockInfo& superblock_info = m_superblock_info_ways[way];
+    assert(superblock_info.isValid(block_id));
+
+    const BlockData& super_data = m_data_ways[way];
+    super_data.readBlockData(block_id, offset, bytes, rd_data);
   }
-
-  const SuperblockInfo& superblock_info = m_superblock_info_ways[way];
-  assert(superblock_info.isValid(block_id));
-
-  const BlockData& super_data = m_data_ways[way];
-  super_data.readBlockData(block_id, offset, bytes, rd_data);
 
   if (update_replacement) updateReplacementWay(way);
 }
 
 void CacheSet::writeLine(IntPtr tag, UInt32 block_id, UInt32 offset,
                          const Byte* wr_data, UInt32 bytes,
-                         bool update_replacement, WritebackLines* writebacks,
-                         CacheCntlr* cntlr) {
+                         bool update_replacement, bool is_writeback,
+                         WritebackLines* writebacks, CacheCntlr* cntlr) {
 
   assert(offset + bytes <= m_blocksize);
   assert((wr_data == nullptr && offset == 0 && bytes == 0) ||
@@ -176,8 +186,9 @@ void CacheSet::writeLine(IntPtr tag, UInt32 block_id, UInt32 offset,
         "the updated line",
         m_parent_cache->getName().c_str(), this);
 
-    insertLine(std::move(mod_block_info), mod_block_data.get(), writebacks,
-               cntlr);
+    bool allow_fwd_inv = !is_writeback;
+    insertLine(std::move(mod_block_info), mod_block_data.get(), allow_fwd_inv,
+               writebacks, cntlr);
 
     LOG_ASSERT_ERROR(find(tag, block_id, &final_way),
                      "Could not find the line just re-placed");
@@ -223,8 +234,8 @@ void CacheSet::invalidate(IntPtr tag, UInt32 block_id) {
 }
 
 void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
-                          const Byte* ins_data, WritebackLines* writebacks,
-                          CacheCntlr* cntlr) {
+                          const Byte* ins_data, bool allow_fwd_inv, 
+                          WritebackLines* writebacks, CacheCntlr* cntlr) {
 
   assert(ins_block_info.get() != nullptr);
   assert(writebacks != nullptr);
@@ -278,13 +289,32 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
    *   prevent the replacement engine from finding any suitable victim and
    *   crashes the simulator.
    */
-  const UInt32 repl_way           = getReplacementWay(cntlr);
+  const UInt32 repl_way           = getReplacementWay(allow_fwd_inv, cntlr);
+  if (repl_way == m_associativity) {
+    IntPtr ins_addr = m_parent_cache->tagToAddress(ins_block_info->getTag());
+
+    std::unique_ptr<Byte> ins_block_data(new Byte[m_blocksize]);
+    std::copy_n(ins_data, m_blocksize, ins_block_data.get());
+
+    writebacks->emplace_back(ins_addr, std::move(ins_block_info), 
+                             std::move(ins_block_data));
+
+    LOG_PRINT("(%s->%p): END Inserting line is not possible, so must bypass ",
+              "%u writebacks scheduled",
+              m_parent_cache->getName().c_str(), this, writebacks->size());
+
+    return;
+  }
+
   SuperblockInfo& superblock_info = m_superblock_info_ways[repl_way];
   BlockData& super_data           = m_data_ways[repl_way];
 
   LOG_PRINT("(%s->%p): Inserting line causes evictions repl_way: %u %s",
             m_parent_cache->getName().c_str(), this, repl_way,
             superblock_info.dump().c_str());
+
+  LOG_PRINT("(%s->%p): Priorities are now %s",
+            m_parent_cache->getName().c_str(), this, dump_priorities().c_str());
 
   /*
    * Second insert attempt: kick out every cache block in the superblock

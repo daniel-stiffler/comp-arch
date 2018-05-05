@@ -54,7 +54,8 @@ void BlockData::removeDictEntry(UInt8 ptr) {
 void BlockData::changeScheme(DISH::scheme_t new_scheme) {
   if (m_scheme != new_scheme) {
     LOG_PRINT("(%s->%p): Changing scheme from %s to %s, m_valid: {%d%d%d%d}",
-              m_parent_cache->getName().c_str(), DISH::scheme2name.at(m_scheme),
+              m_parent_cache->getName().c_str(), this, 
+              DISH::scheme2name.at(m_scheme), 
               DISH::scheme2name.at(new_scheme), m_valid[0], m_valid[1],
               m_valid[2], m_valid[3]);
   }
@@ -140,7 +141,7 @@ BlockData::BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize,
 
   for (auto& e : m_data) {
     e.resize(m_blocksize);
-    std::fill_n(m_data, m_blocksize, 0);
+    std::fill_n(&e[0], m_blocksize, 0);
   }
 
   changeScheme(m_scheme);

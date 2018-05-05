@@ -1,5 +1,7 @@
 #include "cache_set_lru.h"
 
+#include <sstream>
+
 #include "log.h"
 #include "stats.h"
 
@@ -8,12 +10,10 @@
 CacheSetLRU::CacheSetLRU(UInt32 set_index, CacheBase::cache_t cache_type, UInt32 associativity,
                          UInt32 blocksize,
                          CacheCompressionCntlr* compress_cntlr,
-                         const Cache* parent_cache, CacheSetInfoLRU* set_info,
-                         UInt8 num_attempts)
+                         const Cache* parent_cache, CacheSetInfoLRU* set_info)
     : CacheSet(set_index, cache_type, associativity, blocksize, compress_cntlr,
                parent_cache),
 
-      m_num_attempts(num_attempts),
       m_lru_places(associativity),  // Maximum number of buckets
       m_set_info(set_info) {
 
@@ -27,56 +27,33 @@ CacheSetLRU::~CacheSetLRU() {
   // RAII takes care of destructing everything for us
 }
 
-UInt32 CacheSetLRU::getReplacementWay(CacheCntlr* cntlr) {
+UInt32 CacheSetLRU::getReplacementWay(bool allow_fwd_inv, CacheCntlr* cntlr) {
   // First try to find an unallocated superblock
   for (UInt32 i = 0; i < m_associativity; ++i) {
     if (!m_superblock_info_ways[i].isValid()) {
       // Found an empty superblock, so mark it as the most-recently used and
-      // return the way intex
+      // return the way index
       moveToMRU(i);
       return i;
     }
   }
 
-  // Make m_num_attemps attempts at evicting the block at LRU position
-  for (UInt8 attempt = 0; attempt < m_num_attempts; ++attempt) {
-    UInt32 repl_way = m_lru_priorities.back();
-
-    bool qbs_reject = false;
-    // Do not use this on the last iteration
-    if (attempt < m_num_attempts - 1) {
-      /*
-       * Perform query-based-selection on all cache blocks in the superblock.
-       * This could potentially lead to hangs, since the SNIPER cache hierarchy
-       * is mostly inclusive and we cannot bypass caches to evict something in
-       * a lower level.
-       */
-
-      const SuperblockInfo& superblock = m_superblock_info_ways[repl_way];
-      for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-        CacheBlockInfo* block_info = superblock.peekBlock(i);
-
-        qbs_reject |= cntlr->isInLowerLevelCache(block_info);
-      }
+  UInt32 repl_way = m_associativity;
+  for (const auto e : m_lru_priorities) {
+    if (isValidReplacement(e)) {
+      repl_way = e;
+      break;
     }
+  } 
+  if (repl_way == m_associativity) {
+    LOG_PRINT_WARNING("None of the blocks were marked as valid replacements");
+    return m_associativity;
+  } else {
+    // Mark our newly-inserted line as most-recently used
+    moveToMRU(repl_way);
 
-    if (qbs_reject) {
-      // Block is contained in lower-level cache, and we have more tries
-      // remaining.  Move this block to MRU and try again
-      moveToMRU(repl_way);
-      cntlr->incrementQBSLookupCost();
-    } else {
-      // Mark our newly-inserted line as most-recently used
-      moveToMRU(repl_way);
-      m_set_info->incrementAttempt(attempt);
-
-      return repl_way;
-    }
+    return repl_way;
   }
-
-  LOG_PRINT_ERROR(
-      "!! Deadlock condition for cache replacement reached !!"
-      "Could not find a suitable line to evict, so we have to panic.");
 }
 
 void CacheSetLRU::updateReplacementWay(UInt32 accessed_way) {
@@ -88,36 +65,42 @@ void CacheSetLRU::updateReplacementWay(UInt32 accessed_way) {
   moveToMRU(accessed_way);
 }
 
+std::string CacheSetLRU::dump_priorities() const {
+  std::stringstream info_ss;
+
+  info_ss << "LRU( ";
+  
+  for (const auto e : m_lru_priorities) {
+    info_ss << e << " ";
+  } 
+  
+  info_ss << " )";
+
+  return info_ss.str();
+}
+
 void CacheSetLRU::moveToMRU(UInt32 accessed_way) {
   assert(accessed_way < m_associativity);
 
   std::list<UInt32>::iterator prev_it = m_lru_places[accessed_way];
-  m_lru_priorities.erase(prev_it);
+  m_lru_priorities.erase(m_lru_places[accessed_way]);
   m_lru_priorities.push_back(accessed_way);
   m_lru_places[accessed_way] = std::prev(m_lru_priorities.end());
 }
 
 CacheSetInfoLRU::CacheSetInfoLRU(String name, String cfgname, core_id_t core_id,
-                                 UInt32 associativity, UInt8 num_attempts)
+                                 UInt32 associativity)
     : m_associativity(associativity),
-      m_access(associativity),
-      m_attempts(num_attempts) {
+      m_access(associativity) {
 
   for (UInt32 i = 0; i < m_associativity; ++i) {
     m_access[i] = 0;
     registerStatsMetric(name, core_id, String("access-mru-") + itostr(i),
                         &m_access[i]);
   }
-
-  if (num_attempts > 1) {
-    for (UInt32 i = 0; i < num_attempts; ++i) {
-      m_attempts[i] = 0;
-      registerStatsMetric(name, core_id, String("qbs-attempt-") + itostr(i),
-                          &m_attempts[i]);
-    }
-  }
 };
 
 CacheSetInfoLRU::~CacheSetInfoLRU() {
   // RAII takes care of destructing everything for us
 }
+

@@ -133,12 +133,12 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
   if (access_type == LOAD) {
     LOG_PRINT(
         "(%s->%p): Loading single line addr: %lx (tag: %lx set_index: %u way: "
-        "%u"
-        "block_id: %u offset: %u) into acc_data: %p bytes: %u",
-        m_name.c_str(), this, addr, tag, set_index, init_way, block_id,
+        "%u block_id: %u offset: %u) into acc_data: %p bytes: %u",
+        m_name.c_str(), this, addr, tag, set_index, init_way, block_id, offset,
         acc_data, bytes);
 
-    set->readLine(tag, block_id, offset, bytes, update_replacement, acc_data);
+    set->readLine(init_way, block_id, offset, bytes, update_replacement, 
+                  acc_data);
   } else {
     assert(writebacks != nullptr);
     assert(cntlr != nullptr);
@@ -168,8 +168,10 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
         m_name.c_str(), this, addr, tag, set_index, init_way, block_id, offset,
         wr_data_mux, bytes);
 
+    // TODO
+    bool is_writeback = false;
     set->writeLine(tag, block_id, offset, wr_data_mux, bytes,
-                   update_replacement, writebacks, cntlr);
+                   update_replacement, is_writeback, writebacks, cntlr);
   }
 
   return block_info;
@@ -254,7 +256,9 @@ void Cache::insertSingleLine(IntPtr addr, const Byte* ins_data,
   block_info->setTag(tag);
 
   CacheSet* set = m_sets[set_index].get();
-  set->insertLine(std::move(block_info), ins_data_mux, writebacks, cntlr);
+  bool allow_fwd_inv = true;  // TODO
+  set->insertLine(std::move(block_info), ins_data_mux, allow_fwd_inv, 
+                  writebacks, cntlr);
 
 #ifdef ENABLE_SET_USAGE_HIST
   ++m_set_usage_hist[set_index];

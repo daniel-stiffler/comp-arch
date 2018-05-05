@@ -3,6 +3,7 @@
 #include <cstring>
 #include <memory>
 #include <vector>
+#include <string>
 
 #include "block_data.h"
 #include "cache_base.h"
@@ -72,12 +73,14 @@ class CacheSet {
                 bool update_replacement, Byte* rd_data);
   void writeLine(IntPtr tag, UInt32 block_id, UInt32 offset,
                  const Byte* wr_buff, UInt32 bytes, bool update_replacement,
-                 WritebackLines* writebacks, CacheCntlr* cntlr = nullptr);
+                 bool is_writeback, WritebackLines* writebacks,
+                 CacheCntlr* cntlr = nullptr);
   CacheBlockInfo* find(IntPtr tag, UInt32 block_id,
                        UInt32* way = nullptr) const;
   void invalidate(IntPtr tag, UInt32 block_info);
-  void insertLine(CacheBlockInfoUPtr ins_block_info, const Byte* ins_data,
-                  WritebackLines* writebacks, CacheCntlr* cntlr = nullptr);
+  void insertLine(CacheBlockInfoUPtr ins_block_info, const Byte* ins_data, 
+                  bool allow_fwd_inv, WritebackLines* writebacks, 
+                  CacheCntlr* cntlr);
 
   CacheBlockInfo* peekBlock(UInt32 way, UInt32 block_id) const {
     assert(way < m_associativity);
@@ -87,8 +90,9 @@ class CacheSet {
 
   // Pure virtual functions for the replacement policies.  These will be
   // overridden by specialized subclasses of CacheSet to manage LRU.
-  virtual UInt32 getReplacementWay(CacheCntlr* cntlr)    = 0;
+  virtual UInt32 getReplacementWay(bool allow_fwd_inv, CacheCntlr* cntlr) = 0;
   virtual void updateReplacementWay(UInt32 accessed_way) = 0;
+  virtual std::string dump_priorities() const = 0;
 
   bool isValidReplacement(UInt32 way);
 };
