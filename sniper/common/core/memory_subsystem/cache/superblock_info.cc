@@ -5,7 +5,8 @@
 
 #include "log.h"
 
-SuperblockInfo::SuperblockInfo() : m_supertag(TAG_UNUSED) {}
+SuperblockInfo::SuperblockInfo()
+    : m_supertag(TAG_UNUSED), m_block_infos(nullptr) {}
 
 SuperblockInfo::~SuperblockInfo() {
   // RAII takes care of destructing everything for us

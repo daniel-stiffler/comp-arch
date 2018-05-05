@@ -140,6 +140,7 @@ BlockData::BlockData(UInt32 way, UInt32 set_index, UInt32 blocksize,
 
   for (auto& e : m_data) {
     e.resize(m_blocksize);
+    std::fill_n(m_data, m_blocksize, 0);
   }
 
   changeScheme(m_scheme);

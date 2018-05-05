@@ -9,8 +9,8 @@
 
 class SuperblockInfo {
  private:
-  std::array<CacheBlockInfoUPtr, SUPERBLOCK_SIZE> m_block_infos;
   IntPtr m_supertag;
+  std::array<CacheBlockInfoUPtr, SUPERBLOCK_SIZE> m_block_infos;
 
  public:
   SuperblockInfo();
