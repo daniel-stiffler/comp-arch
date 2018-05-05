@@ -1,8 +1,9 @@
-#include <cassert>
-
 #include "cache.h"  // Forward declared the class
 #include "cache_set.h"
 #include "cache_set_lru.h"
+
+#include <algorithm>
+#include <cassert>
 
 #include "config.h"
 #include "config.hpp"
@@ -100,15 +101,11 @@ CacheSet::~CacheSet() {
 void CacheSet::readLine(UInt32 way, UInt32 block_id, UInt32 offset,
                         UInt32 bytes, bool update_replacement, Byte* rd_data) {
 
-  LOG_PRINT(
-      "CacheSet(%p) way: %u block_id: %u offset: %u rd_data: %p bytes: %u",
-      this, way, block_id, offset, rd_data, bytes);
-
   assert(offset + bytes <= m_blocksize);
 
   if (!((rd_data == nullptr && offset == 0 && bytes == 0) ||
         (rd_data != nullptr))) {
-    LOG_PRINT(
+    LOG_PRINT_WARNING(
         "TODO: CacheSet readLine failed nullptr condition, so manually setting "
         "offset and bytes for now");
     offset = 0;
@@ -124,34 +121,35 @@ void CacheSet::readLine(UInt32 way, UInt32 block_id, UInt32 offset,
   if (update_replacement) updateReplacementWay(way);
 }
 
-void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
+void CacheSet::writeLine(IntPtr tag, UInt32 block_id, UInt32 offset,
                          const Byte* wr_data, UInt32 bytes,
                          bool update_replacement, WritebackLines* writebacks,
                          CacheCntlr* cntlr) {
-
-  LOG_PRINT(
-      "BEGIN writing CacheSet(%p) way: %u block_id: %u offset: %u wr_data: %p "
-      "bytes: %u, %u writebacks scheduled",
-      this, way, block_id, offset, wr_data, bytes, writebacks->size());
 
   assert(offset + bytes <= m_blocksize);
   assert((wr_data == nullptr && offset == 0 && bytes == 0) ||
          (wr_data != nullptr));
 
-  SuperblockInfo& superblock_info = m_superblock_info_ways[way];
-  assert(superblock_info.isValid(block_id));
+  UInt32 init_way;
+  LOG_ASSERT_ERROR(find(tag, block_id, &init_way) != nullptr,
+                   "Attempting to write non-resident line");
 
-  BlockData& super_data = m_data_ways[way];
+  SuperblockInfo& superblock_info = m_superblock_info_ways[init_way];
+  BlockData& super_data           = m_data_ways[init_way];
+
+  LOG_PRINT(
+      "(%s->%p): BEGIN writing line tag: %lx init_way: %u block_id: %u offset: "
+      "%u wr_data: %p bytes: %u, %u writebacks scheduled",
+      m_parent_cache->getName().c_str(), this, tag, init_way, block_id, offset,
+      wr_data, bytes, writebacks->size());
+
+  UInt32 final_way;
 
   if (super_data.canWriteBlockData(block_id, offset, wr_data, bytes,
                                    m_compress_cntlr)) {
-
-    if (wr_data != nullptr && bytes >= 4) {
-      LOG_PRINT("TESTING %x %x %x %x", wr_data[0], wr_data[1], wr_data[2],
-                wr_data[3]);
-    }
     super_data.writeBlockData(block_id, offset, wr_data, bytes,
                               m_compress_cntlr);
+    final_way = init_way;
   } else {
     /*
      * Current block cannot be modified in memory without changing the
@@ -170,11 +168,22 @@ void CacheSet::writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
     CacheBlockInfoUPtr mod_block_info =
         superblock_info.evictBlockInfo(block_id);
 
+    // Manually update the cache line contents
+    std::copy_n(wr_data + offset, bytes, mod_block_data.get());
+
+    LOG_PRINT(
+        "(%s->%p): Writing line caused evictions, now preparing to re-insert "
+        "the updated line",
+        m_parent_cache->getName().c_str(), this);
+
     insertLine(std::move(mod_block_info), mod_block_data.get(), writebacks,
                cntlr);
+
+    LOG_ASSERT_ERROR(find(tag, block_id, &final_way),
+                     "Could not find the line just re-placed");
   }
 
-  if (update_replacement) updateReplacementWay(way);
+  if (update_replacement) updateReplacementWay(final_way);
 }
 
 CacheBlockInfo* CacheSet::find(IntPtr tag, UInt32 block_id, UInt32* way) const {
@@ -207,8 +216,8 @@ void CacheSet::invalidate(IntPtr tag, UInt32 block_id) {
     m_data_ways[inv_way].invalidateBlockData(block_id, m_compress_cntlr);
   } else {
     LOG_PRINT_WARNING(
-        "CacheSet attempted to invalidate tag: %lx block_id: %u but no lines "
-        "were touched",
+        "Attempted to invalidate tag: %lx block_id: %u but no lines were "
+        "touched",
         tag, block_id);
   }
 }
@@ -216,12 +225,6 @@ void CacheSet::invalidate(IntPtr tag, UInt32 block_id) {
 void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
                           const Byte* ins_data, WritebackLines* writebacks,
                           CacheCntlr* cntlr) {
-
-  LOG_PRINT(
-      "CacheSet(%p) BEGIN inserting tag: %lx ptr: %p ins_data: %p, %u "
-      "writebacks scheduled",
-      this, ins_block_info->getTag(), ins_block_info.get(), ins_data,
-      writebacks->size());
 
   assert(ins_block_info.get() != nullptr);
   assert(writebacks != nullptr);
@@ -231,6 +234,12 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   UInt32 ins_block_id;
   m_parent_cache->splitAddress(ins_addr, nullptr, &ins_supertag, nullptr,
                                &ins_block_id, nullptr);
+
+  LOG_PRINT(
+      "(%s->%p): BEGIN inserting line addr: %lx ins_supertag: %lx "
+      "ins_block_id: %u ins_data: %p, %u writebacks scheduled",
+      m_parent_cache->getName().c_str(), this, ins_addr, ins_supertag,
+      ins_block_id, ins_data, writebacks->size());
 
   /*
    * First insert attempt: scan through superblocks and test to see if
@@ -251,11 +260,8 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
       merge_superblock_info.insertBlockInfo(ins_supertag, ins_block_id,
                                             std::move(ins_block_info));
 
-      LOG_PRINT(
-          "CacheSet (%p) END inserting ins_supertag: %lx ins_block_id: %u way: "
-          "%u, "
-          "merged lines",
-          this, ins_supertag, ins_block_id, i);
+      LOG_PRINT("(%s->%p): END inserting line, merged into existing at way: %u",
+                m_parent_cache->getName().c_str(), this, i);
 
       return;
     }
@@ -276,10 +282,8 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   SuperblockInfo& superblock_info = m_superblock_info_ways[repl_way];
   BlockData& super_data           = m_data_ways[repl_way];
 
-  LOG_PRINT(
-      "CacheSet(%p) inserting causes evictions tag: %lx ptr: %p ins_data: %p",
-      this, ins_block_info->getTag(), ins_block_info.get(), ins_data);
-  LOG_PRINT("CacheSet(%p) evicting from way: %u superblock %s", this, repl_way,
+  LOG_PRINT("(%s->%p): Inserting line causes evictions repl_way: %u %s",
+            m_parent_cache->getName().c_str(), this, repl_way,
             superblock_info.dump().c_str());
 
   /*
@@ -309,10 +313,8 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
                                   std::move(ins_block_info));
 
   LOG_PRINT(
-      "CacheSet(%p) END inserting with evictions ins_supertag: %lx "
-      "ins_block_id: %u way: %u, %u "
-      "writebacks scheduled",
-      this, ins_supertag, ins_block_id, repl_way, writebacks->size());
+      "(%s->%p): END inserting line with evictions, %u writebacks scheduled",
+      m_parent_cache->getName().c_str(), this, writebacks->size());
 }
 
 UInt8 CacheSet::getNumQBSAttempts(CacheBase::ReplacementPolicy policy,

@@ -70,7 +70,7 @@ class CacheSet {
 
   void readLine(UInt32 way, UInt32 block_id, UInt32 offset, UInt32 bytes,
                 bool update_replacement, Byte* rd_data);
-  void writeLine(UInt32 way, UInt32 block_id, UInt32 offset,
+  void writeLine(IntPtr tag, UInt32 block_id, UInt32 offset,
                  const Byte* wr_buff, UInt32 bytes, bool update_replacement,
                  WritebackLines* writebacks, CacheCntlr* cntlr = nullptr);
   CacheBlockInfo* find(IntPtr tag, UInt32 block_id,

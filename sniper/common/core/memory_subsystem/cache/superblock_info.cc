@@ -51,6 +51,14 @@ void SuperblockInfo::swapBlockInfo(UInt32 block_id,
 }
 
 CacheBlockInfoUPtr SuperblockInfo::evictBlockInfo(UInt32 block_id) {
+  LOG_ASSERT_WARNING(
+      isValid(block_id),
+      "Attempting to evict an already invalid block block_id: %u", block_id);
+
+  LOG_PRINT(
+      "(%p): Evicting block info block_id: %u, valid blocks are {%d%d%d%d}",
+      this, block_id, isValid(0), isValid(1), isValid(2), isValid(3));
+
   CacheBlockInfoUPtr evict_block = std::move(m_block_infos[block_id]);
 
   if (!isValid()) m_supertag = TAG_UNUSED;
@@ -62,6 +70,9 @@ void SuperblockInfo::insertBlockInfo(IntPtr supertag, UInt32 block_id,
                                      CacheBlockInfoUPtr ins_block_info) {
 
   if (!isValid()) m_supertag = supertag;
+
+  LOG_PRINT("(%p): Inserting block info supertag: %lx block_id: %u ptr: %p",
+            this, m_supertag, block_id, ins_block_info.get());
 
   m_block_infos[block_id] = std::move(ins_block_info);
 }
@@ -101,23 +112,23 @@ void SuperblockInfo::invalidateBlockInfo(IntPtr tag, UInt32 block_id) {
   CacheBlockInfo* inv_block_info = m_block_infos[block_id].get();
 
   LOG_ASSERT_WARNING(
-      inv_block_info != nullptr && inv_block_info->isValid(),
-      "SuperblockInfo attempting invalidation on already invalid block %p", tag,
-      block_id, inv_block_info);
+      isValid(block_id),
+      "Attempting to invalidate an already invalid block tag: %lx block_id: %u",
+      tag, block_id);
 
   IntPtr inv_tag = inv_block_info->getTag();
   LOG_ASSERT_ERROR(
       tag == inv_tag,
-      "SuperblockInfo attempting invalidation but tags did not match (%lx %lx)",
-      tag, inv_tag);
+      "Attempting to invalide, but tags did not match (%lx vs %lx)", tag,
+      inv_tag);
+
+  LOG_PRINT(
+      "(%p): Invalidating block info tag: %lx block_id: %u ptr: %p, valid "
+      "blocks are {%d%d%d%d}",
+      this, inv_tag, block_id, inv_block_info, isValid(0), isValid(1),
+      isValid(2), isValid(3));
 
   inv_block_info->invalidate();
-
-  /* TODO: SNIPER simulator race conditions when two threads attempt to invalidate at the same time */
-  /*
-  LOG_PRINT("SuperblockInfo(%p) invalidating CacheBlockInfo tag: %lx block_id: %u ptr: %p",
-            this, tag, block_id, inv_block_info);
-  */
 
   if (!isValid()) m_supertag = TAG_UNUSED;
 }
@@ -133,12 +144,16 @@ std::string SuperblockInfo::dump() const {
     const CacheBlockInfo* tmp_block_info = m_block_infos[i].get();
 
     IntPtr tmp_tag;
-    if (tmp_block_info != nullptr) tmp_tag = tmp_block_info->getTag();
-    else tmp_tag = TAG_UNUSED;
+    if (tmp_block_info != nullptr)
+      tmp_tag = tmp_block_info->getTag();
+    else
+      tmp_tag = TAG_UNUSED;
 
     bool tmp_valid;
-    if (tmp_block_info != nullptr) tmp_valid = tmp_block_info->isValid();
-    else tmp_valid = false;
+    if (tmp_block_info != nullptr)
+      tmp_valid = tmp_block_info->isValid();
+    else
+      tmp_valid = false;
 
     info_ss << "(" << tmp_block_info
             << " tag: " << reinterpret_cast<void*>(tmp_tag)
