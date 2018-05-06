@@ -123,6 +123,7 @@ class Cache : public CacheBase {
   CacheBlockInfo* accessSingleLine(IntPtr addr, access_t access_type,
                                    Byte* acc_data, UInt32 bytes,
                                    SubsecondTime now, bool update_replacement,
+                                   bool is_writeback          = false,
                                    WritebackLines* writebacks = nullptr,
                                    CacheCntlr* cntlr          = nullptr);
   void insertSingleLine(IntPtr addr, const Byte* ins_data, SubsecondTime now,

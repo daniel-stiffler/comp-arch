@@ -1,3 +1,4 @@
+#include "cache.h"  // Forward declared the class
 #include "cache_set_lru.h"
 
 #include <sstream>

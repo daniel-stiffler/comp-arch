@@ -1,3 +1,4 @@
+#include "cache.h"  // Forward declared the class
 #include "cache_set_lruqbs.h"
 
 #include <sstream>
@@ -44,7 +45,7 @@ UInt32 CacheSetLRUQBS::getReplacementWay(bool allow_fwd_inv,
   }
 
   // Make m_num_attemps attempts at evicting the block at LRU position
-  for (UInt8 attempt = 0; attempt < m_num_attempts; ++attempt) {
+  for (UInt32 attempt = 0; attempt < m_num_attempts; ++attempt) {
     UInt32 repl_way = m_associativity;
     for (const auto e : m_lru_priorities) {
       if (isValidReplacement(e)) {
@@ -57,23 +58,23 @@ UInt32 CacheSetLRUQBS::getReplacementWay(bool allow_fwd_inv,
       return m_associativity;
     }
 
-    /*
-     * Perform query-based-selection on all cache blocks in the superblock.
-     * This could potentially lead to hangs, since the SNIPER cache hierarchy
-     * is mostly inclusive and we cannot bypass caches to evict something in
-     * a lower level.
-     */
-
     bool qbs_reject = false;
     const SuperblockInfo& superblock = m_superblock_info_ways[repl_way];
     for (UInt32 i = 0; i < SUPERBLOCK_SIZE; ++i) {
-      CacheBlockInfo* block_info = superblock.peekBlock(i);
+      if (superblock.isValid(i)) {
+        CacheBlockInfo* block_info = superblock.peekBlock(i);
 
-      qbs_reject |= cntlr->isInLowerLevelCache(block_info);
+        qbs_reject |= cntlr->isInLowerLevelCache(block_info);
+      }
+    }
+    
+    if (qbs_reject) {
+      LOG_PRINT("(%s->%p): Rejected superblock by QBS %s",
+                m_parent_cache->getName().c_str(), this, 
+                superblock.dump().c_str()); 
     }
 
-
-    if (attempt < m_num_attempts - 1) {  // Not the last attempt
+    if (attempt + 1 < m_num_attempts) {  // Not the last attempt
       if (qbs_reject) {
         // Block is contained in lower-level cache, and we have more tries
         // remaining.  Move this block to MRU and try again

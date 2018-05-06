@@ -371,7 +371,7 @@ HitWhere::where_t CacheCntlr::processMemOpFromCore(
 
   LOG_PRINT(
       "processMemOpFromCore(), lock_signal(%u), mem_op_type(%u), "
-      "ca_address(0x%x)",
+      "ca_address(0x%lx)",
       lock_signal, mem_op_type, ca_address);
   MYLOG("----------------------------------------------");
   MYLOG("%c%c %lx+%u..+%u", mem_op_type == Core::WRITE ? 'W' : 'R',
@@ -591,7 +591,7 @@ HitWhere::where_t CacheCntlr::processMemOpFromCore(
 #endif
 
     LOG_ASSERT_ERROR(operationPermissibleinCache(ca_address, mem_op_type),
-                     "Expected %x to be valid in L1", ca_address);
+                     "Expected %lx to be valid in L1", ca_address);
 
     if (modeled && m_l1_mshr && !m_passthrough) {
       SubsecondTime t_miss_end =
@@ -1388,20 +1388,16 @@ void CacheCntlr::accessCache(Core::mem_op_t mem_op_type, IntPtr ca_address,
         writebacks.reserve(1);
       }
 
+      // TODO: ensure this function is not used on writebacks.  The proper form
+      // is m_next_cache_cntlr->writeCacheBlock
       CacheBlockInfo* wr_block_info = m_master->m_cache->accessSingleLine(
           ca_address + offset, Cache::STORE, data_buf, data_length,
           getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD),
-          update_replacement, &writebacks, this);
+          update_replacement, false, &writebacks, this);
 
       // Write-through cache - Write the next level cache also
       if (m_cache_writethrough) {
-        LOG_ASSERT_ERROR(m_next_cache_cntlr,
-                         "Writethrough enabled on last-level cache !?");
-        MYLOG("writethrough start");
-        m_next_cache_cntlr->writeCacheBlock(ca_address, offset, data_buf,
-                                            data_length,
-                                            ShmemPerfModel::_USER_THREAD);
-        MYLOG("writethrough done");
+        assert(false);  // Not implemented
       }
 
       handleWritebacks(wr_block_info, ShmemPerfModel::_USER_THREAD,
@@ -1606,10 +1602,9 @@ std::pair<SubsecondTime, bool> CacheCntlr::updateCacheBlock(
 
     if (cache_block_info->getCState() == CacheState::MODIFIED) {
       /* data is modified, write it back */
-
       if (m_cache_writethrough) {
-        /* next level already has the data */
-
+        // Next level already has the data
+        assert(false);  // Not implemented
       } else if (m_next_cache_cntlr) {
         /* write straight into the next level cache */
         Byte data_buf[getCacheBlockSize()];
@@ -1695,7 +1690,7 @@ std::pair<SubsecondTime, bool> CacheCntlr::updateCacheBlock(
 }
 
 void CacheCntlr::writeCacheBlock(IntPtr address, UInt32 offset, Byte* data_buf,
-                                 UInt32 data_length,
+                                 UInt32 data_length, 
                                  ShmemPerfModel::Thread_t thread_num) {
   MYLOG(" ");
 
@@ -1719,10 +1714,15 @@ void CacheCntlr::writeCacheBlock(IntPtr address, UInt32 offset, Byte* data_buf,
       writebacks.reserve(1);
     }
 
+    // TODO: this function is always called as
+    // m_next_cache_cntlr->writeCacheBlock for writebacks in the
+    // updateCacheBlock and handleEvictions functions.  Signal to the cache
+    // that it should not be allowed to propagate invalidations to previous
+    // levels.
     CacheBlockInfo* wr_block_info = m_master->m_cache->accessSingleLine(
         address + offset, Cache::STORE, data_buf, data_length,
-        getShmemPerfModel()->getElapsedTime(thread_num), false, &writebacks,
-        this);
+        getShmemPerfModel()->getElapsedTime(thread_num), true, true, 
+        &writebacks, this);
 
     LOG_ASSERT_ERROR(
         wr_block_info,
@@ -1734,10 +1734,7 @@ void CacheCntlr::writeCacheBlock(IntPtr address, UInt32 offset, Byte* data_buf,
   }
 
   if (m_cache_writethrough) {
-    acquireStackLock(true);
-    m_next_cache_cntlr->writeCacheBlock(address, offset, data_buf, data_length,
-                                        thread_num);
-    releaseStackLock(true);
+    assert(false);  // Not implemented
   }
 }
 
@@ -1841,21 +1838,10 @@ void CacheCntlr::handleWritebacks(const CacheBlockInfo* ins_block_info,
       if (m_perfect) {
         // Nothing to do in this case
       } else if (!m_coherent) {
-        /*
-         * Don't notify the next level, it may have already evicted the line
-         * itself and won't like our notifyPrevLevelEvict Make sure the line
-         * wasn't modified though (unless we're writethrough), else data would
-         * have been lost
-         */
-        if (!m_cache_writethrough)
-          LOG_ASSERT_ERROR(evict_cstate != CacheState::MODIFIED,
-                           "Non-coherent cache is throwing away dirty data");
+        assert(false);  // Not implemented
       } else if (m_next_cache_cntlr) {
         if (m_cache_writethrough) {
-          /*
-           * If we're a write-through cache the new data is in the next level
-           * already
-           */
+          assert(false);  // Not implemented
         } else {
           /*
            * Send dirty block to next level cache. Probably we have an
@@ -1863,7 +1849,7 @@ void CacheCntlr::handleWritebacks(const CacheBlockInfo* ins_block_info,
            */
           if (evict_cstate == CacheState::MODIFIED)
             m_next_cache_cntlr->writeCacheBlock(evict_addr, 0, evict_block_data,
-                                                getCacheBlockSize(),
+                                                getCacheBlockSize(), 
                                                 thread_num);
         }
 

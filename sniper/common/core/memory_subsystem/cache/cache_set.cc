@@ -190,8 +190,12 @@ void CacheSet::writeLine(IntPtr tag, UInt32 block_id, UInt32 offset,
     insertLine(std::move(mod_block_info), mod_block_data.get(), allow_fwd_inv,
                writebacks, cntlr);
 
-    LOG_ASSERT_ERROR(find(tag, block_id, &final_way),
-                     "Could not find the line just re-placed");
+    // Edge case allows lines STORED as part of a writeback up the cache 
+    // hierarchy to bypass levels entirely if they cannot be safely stored
+    if (!is_writeback) {
+      LOG_ASSERT_ERROR(find(tag, block_id, &final_way),
+                       "Could not find the line just re-placed");
+    }
   }
 
   if (update_replacement) updateReplacementWay(final_way);
@@ -299,7 +303,7 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
     writebacks->emplace_back(ins_addr, std::move(ins_block_info), 
                              std::move(ins_block_data));
 
-    LOG_PRINT("(%s->%p): END Inserting line is not possible, so must bypass ",
+    LOG_PRINT("(%s->%p): END Inserting line is not possible, so must bypass "
               "%u writebacks scheduled",
               m_parent_cache->getName().c_str(), this, writebacks->size());
 
@@ -309,8 +313,9 @@ void CacheSet::insertLine(CacheBlockInfoUPtr ins_block_info,
   SuperblockInfo& superblock_info = m_superblock_info_ways[repl_way];
   BlockData& super_data           = m_data_ways[repl_way];
 
-  LOG_PRINT("(%s->%p): Inserting line causes evictions repl_way: %u %s",
-            m_parent_cache->getName().c_str(), this, repl_way,
+  LOG_PRINT("(%s->%p): Inserting line causes evictions allow_fwd_inv: %d "
+            "repl_way: %u %s",
+            m_parent_cache->getName().c_str(), this, allow_fwd_inv, repl_way,
             superblock_info.dump().c_str());
 
   LOG_PRINT("(%s->%p): Priorities are now %s",

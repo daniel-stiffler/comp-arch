@@ -84,7 +84,8 @@ void Cache::invalidateSingleLine(IntPtr addr) {
 CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
                                         Byte* acc_data, UInt32 bytes,
                                         SubsecondTime now,
-                                        bool update_replacement,
+                                        bool update_replacement, 
+                                        bool is_writeback,
                                         WritebackLines* writebacks,
                                         CacheCntlr* cntlr) {
 
@@ -168,8 +169,6 @@ CacheBlockInfo* Cache::accessSingleLine(IntPtr addr, access_t access_type,
         m_name.c_str(), this, addr, tag, set_index, init_way, block_id, offset,
         wr_data_mux, bytes);
 
-    // TODO
-    bool is_writeback = false;
     set->writeLine(tag, block_id, offset, wr_data_mux, bytes,
                    update_replacement, is_writeback, writebacks, cntlr);
   }
@@ -256,8 +255,7 @@ void Cache::insertSingleLine(IntPtr addr, const Byte* ins_data,
   block_info->setTag(tag);
 
   CacheSet* set = m_sets[set_index].get();
-  bool allow_fwd_inv = true;  // TODO
-  set->insertLine(std::move(block_info), ins_data_mux, allow_fwd_inv, 
+  set->insertLine(std::move(block_info), ins_data_mux, true, 
                   writebacks, cntlr);
 
 #ifdef ENABLE_SET_USAGE_HIST

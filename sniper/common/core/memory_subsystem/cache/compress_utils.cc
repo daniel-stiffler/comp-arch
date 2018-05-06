@@ -8,7 +8,7 @@ std::string printBytes(const Byte* data, UInt32 size) {
 
   info_ss << "( " << std::hex; 
   for (UInt32 i = 0; i < size; ++i) {
-    info_ss << data[i] << " ";
+    info_ss << static_cast<UInt32>(data[i]) << " ";
   }
   info_ss << " )";
 
