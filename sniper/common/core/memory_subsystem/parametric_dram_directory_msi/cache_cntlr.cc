@@ -1367,6 +1367,8 @@ void CacheCntlr::accessCache(Core::mem_op_t mem_op_type, IntPtr ca_address,
                              UInt32 offset, Byte* data_buf, UInt32 data_length,
                              bool update_replacement) {
 
+  LOG_PRINT("Accessing cache");
+
   switch (mem_op_type) {
     case Core::READ:
     case Core::READ_EX:
@@ -1439,8 +1441,20 @@ SharedCacheBlockInfo* CacheCntlr::setCacheState(IntPtr address,
 void CacheCntlr::invalidateCacheBlock(IntPtr address) {
   __attribute__((unused)) CacheState::cstate_t old_cstate =
       getCacheState(address);
+
+  LOG_PRINT("Invalidating line @%lx", address);
   assert(old_cstate != CacheState::MODIFIED);
-  assert(old_cstate != CacheState::INVALID);
+
+  // There is an edge case for compressed caches if the previous L1->L2 
+  // (example) fill operation caused the line to become incompressible
+  // and the replacement policy does not allow it to kick out anything
+  // to make room.  In this case, it will be elevated to the highest
+  // available cache and no longer be here for invalidation.  TODO
+  /*
+  LOG_ASSERT_ERROR(old_cstate != CacheState::INVALID, 
+                   "Attempted to invalidate line @%lx in %c state",
+                   address, CStateString(old_cstate));
+  */
 
   m_master->m_cache->invalidateSingleLine(address);
 
@@ -1692,12 +1706,12 @@ std::pair<SubsecondTime, bool> CacheCntlr::updateCacheBlock(
 void CacheCntlr::writeCacheBlock(IntPtr address, UInt32 offset, Byte* data_buf,
                                  UInt32 data_length, 
                                  ShmemPerfModel::Thread_t thread_num) {
-  MYLOG(" ");
+  LOG_PRINT("Writing cache block (writeback!)");
 
   // TODO: should we update access counter?
 
   if (m_master->m_evicting_buf && (address == m_master->m_evicting_address)) {
-    MYLOG("writing to evict buffer %lx", address);
+    LOG_PRINT("writing to evict buffer %lx", address);
     assert(offset == 0);
     assert(data_length == getCacheBlockSize());
     if (data_buf)

@@ -181,12 +181,12 @@ void CacheSet::writeLine(IntPtr tag, UInt32 block_id, UInt32 offset,
     // Manually update the cache line contents
     std::copy_n(wr_data + offset, bytes, mod_block_data.get());
 
+    bool allow_fwd_inv = !is_writeback;
     LOG_PRINT(
         "(%s->%p): Writing line caused evictions, now preparing to re-insert "
-        "the updated line",
-        m_parent_cache->getName().c_str(), this);
+        "the updated line allow_fwd_inv: %d",
+        m_parent_cache->getName().c_str(), this, allow_fwd_inv);
 
-    bool allow_fwd_inv = !is_writeback;
     insertLine(std::move(mod_block_info), mod_block_data.get(), allow_fwd_inv,
                writebacks, cntlr);
 
